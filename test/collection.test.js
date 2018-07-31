@@ -1,15 +1,18 @@
-var start = require('./common'),
-    mongoose = start.mongoose,
-    assert = require('power-assert'),
-    Collection = require('../lib/collection');
+'use strict';
+
+const Collection = require('../lib/collection');
+const assert = require('assert');
+const start = require('./common');
+
+const mongoose = start.mongoose;
 
 describe('collections:', function() {
   it('should buffer commands until connection is established', function(done) {
-    var db = mongoose.createConnection(),
-        collection = db.collection('test-buffering-collection'),
-        connected = false,
-        inserted = false,
-        pending = 2;
+    const db = mongoose.createConnection();
+    const collection = db.collection('test-buffering-collection');
+    let connected = false;
+    let inserted = false;
+    let pending = 2;
 
     function finish() {
       if (--pending) {
@@ -20,15 +23,15 @@ describe('collections:', function() {
       done();
     }
 
-    collection.insert({}, {safe: true}, function() {
+    collection.insert({}, {}, function() {
       assert.ok(connected);
       inserted = true;
       db.close();
       finish();
     });
 
-    var uri = 'mongodb://localhost/mongoose_test';
-    db.open(process.env.MONGOOSE_TEST_URI || uri, function(err) {
+    const uri = 'mongodb://localhost:27017/mongoose_test';
+    db.openUri(process.env.MONGOOSE_TEST_URI || uri, function(err) {
       connected = !err;
       finish();
     });

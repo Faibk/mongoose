@@ -1,19 +1,23 @@
+'use strict';
+
 /**
  * Test dependencies.
  */
 
-var start = require('./common');
-var mongoose = start.mongoose;
-var Schema = mongoose.Schema;
-var assert = require('power-assert');
-var util = require('util');
-var clone = require('../lib/utils').clone;
-var random = require('../lib/utils').random;
+const assert = require('power-assert');
+const clone = require('../lib/utils').clone;
+const co = require('co');
+const random = require('../lib/utils').random;
+const start = require('./common');
+const util = require('util');
+
+const mongoose = start.mongoose;
+const Schema = mongoose.Schema;
 
 /**
  * Setup
  */
-var PersonSchema = new Schema({
+const PersonSchema = new Schema({
   name: {first: String, last: String},
   gender: String
 }, {collection: 'model-discriminator-' + random()});
@@ -120,17 +124,17 @@ describe('model', function() {
     });
 
     it('sets schema root discriminator mapping', function(done) {
-      assert.deepEqual(PersonSchema.discriminatorMapping, {key: '__t', value: null, isRoot: true});
+      assert.deepEqual(Person.schema.discriminatorMapping, {key: '__t', value: null, isRoot: true});
       done();
     });
 
     it('sets schema discriminator type mapping', function(done) {
-      assert.deepEqual(EmployeeSchema.discriminatorMapping, {key: '__t', value: 'model-discriminator-employee', isRoot: false});
+      assert.deepEqual(Employee.schema.discriminatorMapping, {key: '__t', value: 'model-discriminator-employee', isRoot: false});
       done();
     });
 
     it('adds discriminatorKey to schema with default as name', function(done) {
-      var type = EmployeeSchema.paths.__t;
+      var type = Employee.schema.paths.__t;
       assert.equal(type.options.type, String);
       assert.equal(type.options.default, 'model-discriminator-employee');
       done();
@@ -314,17 +318,6 @@ describe('model', function() {
         done();
       });
 
-      it('merges callQueue with base queue defined before discriminator types callQueue', function(done) {
-        assert.equal(Employee.schema.callQueue.length, 7);
-
-        // EmployeeSchema.pre('save')
-        var queueIndex = Employee.schema.callQueue.length - 1;
-        assert.strictEqual(Employee.schema.callQueue[queueIndex][0], 'pre');
-        assert.strictEqual(Employee.schema.callQueue[queueIndex][1]['0'], 'save');
-        assert.strictEqual(Employee.schema.callQueue[queueIndex][1]['1'], employeeSchemaPreSaveFn);
-        done();
-      });
-
       it('does not inherit indexes', function(done) {
         assert.deepEqual(Person.schema.indexes(), [[{name: 1}, {background: true}]]);
         assert.deepEqual(Employee.schema.indexes(), [[{department: 1}, {background: true}]]);
@@ -355,6 +348,37 @@ describe('model', function() {
         });
       });
 
+      it('deduplicates hooks (gh-2945)', function() {
+        let called = 0;
+        function middleware(next) {
+          ++called;
+          next();
+        }
+
+        function ActivityBaseSchema() {
+          mongoose.Schema.apply(this, arguments);
+          this.options.discriminatorKey = 'type';
+          this.add({ name: String });
+          this.pre('validate', middleware);
+        }
+        util.inherits(ActivityBaseSchema, mongoose.Schema);
+
+        const parentSchema = new ActivityBaseSchema();
+
+        const model = db.model('gh2945', parentSchema);
+
+        const commentSchema = new ActivityBaseSchema({
+          text: { type: String, required: true }
+        });
+
+        const D = model.discriminator('gh2945_0', commentSchema);
+
+        return new D({ text: 'test' }).validate().
+          then(() => {
+            assert.equal(called, 1);
+          })
+      });
+
       it('with typeKey (gh-4339)', function(done) {
         var options = { typeKey: '$type', discriminatorKey: '_t' };
         var schema = new Schema({ test: { $type: String } }, options);
@@ -379,7 +403,6 @@ describe('model', function() {
         Model.discriminator('gh4965_0', childSchema);
         assert.equal(called, 2);
 
-        mongoose.plugins = [];
         mongoose.set('applyPluginsToDiscriminators', false);
         done();
       });
@@ -534,6 +557,36 @@ describe('model', function() {
         });
       });
 
+      it('incorrect discriminator key throws readable error with create (gh-6434)', function() {
+        return co(function*() {
+          const settingSchema = new Schema({ name: String }, {
+            discriminatorKey: 'kind'
+          });
+
+          const defaultAdvisorSchema = new Schema({
+            _advisor: String
+          });
+
+          const Setting = db.model('gh6434_Setting', settingSchema);
+          const DefaultAdvisor = Setting.discriminator('gh6434_DefaultAdvisor',
+            defaultAdvisorSchema);
+
+          let threw = false;
+          try {
+            yield Setting.create({
+              kind: 'defaultAdvisor',
+              name: 'xyz'
+            });
+          } catch (error) {
+            threw = true;
+            assert.equal(error.name, 'MongooseError');
+            assert.equal(error.message, 'Discriminator "defaultAdvisor" not ' +
+              'found for model "gh6434_Setting"');
+          }
+          assert.ok(threw);
+        });
+      });
+
       it('copies query hooks (gh-5147)', function(done) {
         var options = { discriminatorKey: 'kind' };
 
@@ -591,6 +644,40 @@ describe('model', function() {
         done();
       });
 
+      it('overwrites nested paths in parent schema (gh-6076)', function(done) {
+        const schema = mongoose.Schema({
+          account: {
+            type: Object,
+          }
+        });
+
+        const Model = db.model('gh6076', schema);
+
+        const discSchema = mongoose.Schema({
+          account: {
+            user: {
+              ref: 'Foo',
+              required: true,
+              type: mongoose.Schema.Types.ObjectId
+            }
+          }
+        });
+
+        const Disc = Model.discriminator('gh6076_0', discSchema);
+
+        const d1 = new Disc({
+          account: {
+            user: 'AAAAAAAAAAAAAAAAAAAAAAAA',
+          },
+          info: 'AAAAAAAAAAAAAAAAAAAAAAAA',
+        });
+
+        // Should not throw
+        assert.ifError(d1.validateSync());
+
+        done();
+      });
+
       it('nested discriminator key with projecting in parent (gh-5775)', function(done) {
         var itemSchema = new Schema({
           type: { type: String },
@@ -619,6 +706,36 @@ describe('model', function() {
             done();
           });
         });
+      });
+
+      it('with $meta projection (gh-5859)', function() {
+        var eventSchema = new Schema({ eventField: String }, { id: false });
+        var Event = db.model('gh5859', eventSchema);
+
+        var trackSchema = new Schema({ trackField: String });
+        var Track = Event.discriminator('gh5859_0', trackSchema);
+
+        var trackedItem = new Track({
+          trackField: 'trackField',
+          eventField: 'eventField',
+        });
+
+        return trackedItem.save().
+          then(function() {
+            return Event.find({}).select({ score: { $meta: 'textScore' } });
+          }).
+          then(function(docs) {
+            assert.equal(docs.length, 1);
+            assert.equal(docs[0].trackField, 'trackField');
+          }).
+          then(function() {
+            return Track.find({}).select({ score: { $meta: 'textScore' } });
+          }).
+          then(function(docs) {
+            assert.equal(docs.length, 1);
+            assert.equal(docs[0].trackField, 'trackField');
+            assert.equal(docs[0].eventField, 'eventField');
+          });
       });
 
       it('embedded discriminators with $push (gh-5009)', function(done) {
@@ -810,7 +927,6 @@ describe('model', function() {
                 { kind: 'Purchased', product: 'Test2' }
               ]
             });
-            done();
           }).
           then(function() {
             return MyModel.findOne({
@@ -826,6 +942,7 @@ describe('model', function() {
             assert.ok(doc);
             assert.equal(doc.events.length, 1);
             assert.equal(doc.events[0].element, 'Test');
+            done();
           }).
           catch(done);
       });
@@ -872,6 +989,52 @@ describe('model', function() {
         }).
         catch(done);
     });
+
+    it('Embedded discriminators in nested doc arrays (gh-6202)', function() {
+      const eventSchema = new Schema({ message: String }, {
+        discriminatorKey: 'kind',
+        _id: false
+      });
+
+      const batchSchema = new Schema({ events: [[eventSchema]] });
+      const docArray = batchSchema.path('events');
+
+      const clickedSchema = new Schema({
+        element: {type: String, required: true}
+      }, { _id: false });
+      const Clicked = docArray.discriminator('Clicked', clickedSchema);
+
+      const M = db.model('gh6202', batchSchema);
+
+      return M.create({ events: [[{ kind: 'Clicked', element: 'foo' }]] }).
+        then(() => M.findOne()).
+        then(doc => {
+          assert.deepEqual(doc.toObject().events[0][0], {
+            kind: 'Clicked',
+            element: 'foo'
+          });
+        });
+    });
+
+    it('throws an error if calling discriminator on non-doc array (gh-6202)', function() {
+      const batchSchema = new Schema({ events: [[Number]] });
+      const arr = batchSchema.path('events');
+
+      const clickedSchema = new Schema({
+        element: {type: String, required: true}
+      }, { _id: false });
+
+      let threw = false;
+      try {
+        arr.discriminator('Clicked', clickedSchema);
+      } catch (error) {
+        threw = true;
+        assert.ok(error.message.indexOf('embedded discriminator') !== -1,
+          error.message);
+      }
+      assert.ok(threw);
+    });
+
     describe('embedded discriminators + hooks (gh-5706)', function(){
       var counters = {
         eventPreSave: 0,
@@ -956,8 +1119,8 @@ describe('model', function() {
             assert.equal(counters[i], 1);
           });
           done();
-        })
-      })
+        });
+      });
 
       it('should call the hooks on the embedded document in an embedded array defined by both the parent and discriminated schemas', function(done){
         var trackSchema = new Schema({

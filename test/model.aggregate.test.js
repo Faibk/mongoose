@@ -3,12 +3,13 @@
  * Test dependencies.
  */
 
-var start = require('./common'),
-    mongoose = start.mongoose,
-    assert = require('power-assert'),
-    random = require('../lib/utils').random,
-    Aggregate = require('../lib/aggregate'),
-    Schema = mongoose.Schema;
+const Aggregate = require('../lib/aggregate');
+const assert = require('assert');
+const random = require('../lib/utils').random;
+const start = require('./common');
+
+const mongoose = start.mongoose;
+const Schema = mongoose.Schema;
 
 /**
  * Setup.
@@ -60,23 +61,10 @@ describe('model aggregate', function() {
   });
 
   describe('works', function() {
-    it('with argument lists', function(done) {
-      this.timeout(4000);
-
-      A.aggregate(group, project, function(err, res) {
-        assert.ifError(err);
-        assert.ok(res);
-        assert.equal(res.length, 1);
-        assert.ok('maxAge' in res[0]);
-        assert.equal(res[0].maxAge, maxAge);
-        done();
-      });
-    });
-
     it('when return promise', function(done) {
       this.timeout(4000);
 
-      A.aggregate(group, project).then( function(res) {
+      A.aggregate([group, project]).then( function(res) {
         assert.ok(res);
         assert.equal(1, res.length);
         assert.ok('maxAge' in res[0]);
@@ -101,12 +89,11 @@ describe('model aggregate', function() {
     it('with Aggregate syntax', function(done) {
       this.timeout(4000);
 
-      var promise = A.aggregate()
+      A.aggregate()
         .group(group.$group)
         .project(project.$project)
         .exec(function(err, res) {
           assert.ifError(err);
-          assert.ok(promise instanceof mongoose.Promise);
           assert.ok(res);
           assert.equal(res.length, 1);
           assert.ok('maxAge' in res[0]);
@@ -130,11 +117,16 @@ describe('model aggregate', function() {
         assert.ok('maxAge' in res[0]);
         assert.equal(maxAge, res[0].maxAge);
         done();
-      }).end();
+      });
     });
 
     it('when returning Aggregate', function(done) {
-      assert(A.aggregate(project) instanceof Aggregate);
+      assert(A.aggregate([project]) instanceof Aggregate);
+      done();
+    });
+
+    it('throws when passing object (gh-6732)', function(done) {
+      assert.throws(() => A.aggregate({}), /disallows passing a spread/);
       done();
     });
 

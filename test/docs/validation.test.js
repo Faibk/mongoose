@@ -9,7 +9,6 @@ describe('validation docs', function() {
 
   before(function() {
     db = mongoose.createConnection('mongodb://localhost:27017/mongoose_test', {
-      useMongoClient: true,
       poolSize: 1
     });
   });
@@ -131,16 +130,18 @@ describe('validation docs', function() {
 
     var dup = [{ username: 'Val' }, { username: 'Val' }];
     U1.create(dup, function(error) {
-      // Will save successfully!
+      // Race condition! This may save successfully, depending on whether
+      // MongoDB built the index before writing the 2 docs.
       // acquit:ignore:start
-      assert.ifError(error);
+      // Avoid ESLint errors
+      error;
       --remaining || done();
       // acquit:ignore:end
     });
 
     // Need to wait for the index to finish building before saving,
     // otherwise unique constraints may be violated.
-    U2.on('index', function(error) {
+    U2.once('index', function(error) {
       assert.ifError(error);
       U2.create(dup, function(error) {
         // Will error, but will *not* be a mongoose validation error, it will be
@@ -219,23 +220,28 @@ describe('validation docs', function() {
 
   /**
    * Custom validators can also be asynchronous. If your validator function
-   * takes 2 arguments, mongoose will assume the 2nd argument is a callback.
-   *
-   * Even if you don't want to use asynchronous validators, be careful,
-   * because mongoose 4 will assume that **all** functions that take 2
-   * arguments are asynchronous, like the
-   * [`validator.isEmail` function](https://www.npmjs.com/package/validator).
-   * This behavior is considered deprecated as of 4.9.0, and you can shut
-   * it off by specifying `isAsync: false` on your custom validator.
+   * returns a promise (like an `async` function), mongoose will wait for that
+   * promise to settle. If you prefer callbacks, set the `isAsync` option,
+   * and mongoose will pass a callback as the 2nd argument to your validator
+   * function.
    */
   it('Async Custom Validators', function(done) {
     var userSchema = new Schema({
+      name: {
+        type: String,
+        // You can also make a validator async by returning a promise. If you
+        // return a promise, do **not** specify the `isAsync` option.
+        validate: function(v) {
+          return new Promise(function(resolve, reject) {
+            setTimeout(function() {
+              resolve(false);
+            }, 5);
+          });
+        }
+      },
       phone: {
         type: String,
         validate: {
-          // `isAsync` is not strictly necessary in mongoose 4.x, but relying
-          // on 2 argument validators being async is deprecated. Set the
-          // `isAsync` option to `true` to make deprecation warnings go away.
           isAsync: true,
           validator: function(v, cb) {
             setTimeout(function() {
@@ -250,18 +256,6 @@ describe('validation docs', function() {
           message: 'Default error message'
         },
         required: [true, 'User phone number required']
-      },
-      name: {
-        type: String,
-        // You can also make a validator async by returning a promise. If you
-        // return a promise, do **not** specify the `isAsync` option.
-        validate: function(v) {
-          return new Promise(function(resolve, reject) {
-            setTimeout(function() {
-              resolve(false);
-            }, 5);
-          });
-        }
       }
     });
 
@@ -323,8 +317,14 @@ describe('validation docs', function() {
       assert.equal(err.errors.color.path, 'color');
       assert.equal(err.errors.color.value, 'Green');
 
-      assert.equal(err.errors.name.message, 'Name `Power Ranger` is not valid');
+      // This is new in mongoose 5. If your validator throws an exception,
+      // mongoose will use that message. If your validator returns `false`,
+      // mongoose will use the 'Name `Power Ranger` is not valid' message.
+      assert.equal(err.errors.name.message,
+        'Need to get a Turbo Man for Christmas');
       assert.equal(err.errors.name.value, 'Power Ranger');
+      // If your validator threw an error, the `reason` property will contain
+      // the original error thrown, including the original stack trace.
       assert.equal(err.errors.name.reason.message,
         'Need to get a Turbo Man for Christmas');
 
@@ -379,7 +379,7 @@ describe('validation docs', function() {
   /**
    * In the above examples, you learned about document validation. Mongoose also
    * supports validation for `update()` and `findOneAndUpdate()` operations.
-   * In Mongoose 4.x, update validators are off by default - you need to specify
+   * Update validators are off by default - you need to specify
    * the `runValidators` option.
    *
    * To turn on update validators, set the `runValidators` option for
@@ -499,7 +499,7 @@ describe('validation docs', function() {
    * you try to explicitly `$unset` the key.
    */
 
-  it('Update Validator Paths', function(done) {
+  it('Update Validators Only Run On Updated Paths', function(done) {
     // acquit:ignore:start
     var outstanding = 2;
     // acquit:ignore:end
@@ -534,23 +534,25 @@ describe('validation docs', function() {
    * One final detail worth noting: update validators **only** run on the
    * following update operators:
    *
-   * \* `$set`
-   * \* `$unset`
-   * \* `$push` (>= 4.8.0)
-   * \* `$addToSet` (>= 4.8.0)
-   * \* `$pull` (>= 4.12.0)
-   * \* `$pullAll` (>= 4.12.0)
+   * - `$set`
+   * - `$unset`
+   * - `$push` (>= 4.8.0)
+   * - `$addToSet` (>= 4.8.0)
+   * - `$pull` (>= 4.12.0)
+   * - `$pullAll` (>= 4.12.0)
    *
    * For instance, the below update will succeed, regardless of the value of
-   * `number`, because update validators ignore `$inc`. Also, `$push`,
-   * `$addToSet`, `$pull`, and `$pullAll` validation does **not** run any
-   * validation on the array itself, only individual elements of the array.
+   * `number`, because update validators ignore `$inc`.
+   *
+   * Also, `$push`, `$addToSet`, `$pull`, and `$pullAll` validation does
+   * **not** run any validation on the array itself, only individual elements
+   * of the array.
    */
 
-  it('Update Validators Only Run On Specified Paths', function(done) {
+  it('Update Validators Only Run For Some Operations', function(done) {
     var testSchema = new Schema({
       number: { type: Number, max: 0 },
-      arr: [{ message: { type: String, maxLength: 10 } }]
+      arr: [{ message: { type: String, maxlength: 10 } }]
     });
 
     // Update validators won't check this, so you can still `$push` 2 elements

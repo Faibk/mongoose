@@ -42,6 +42,8 @@ describe('model', function() {
       B = db.model('model-create', schemaB, 'gh-2637-1');
       B.discriminator('C', schemaC);
       Breakfast = db.model('gh-2637-2', breakfastSchema, 'gh-2637-2');
+
+      return db;
     });
 
     after(function(done) {
@@ -79,7 +81,7 @@ describe('model', function() {
       var hydrated = B.hydrate({_id: '541085faedb2f28965d0e8e8', title: 'chair', type: 'C'});
 
       assert.equal(hydrated.test, 'test');
-      assert.deepEqual(hydrated.schema, schemaC);
+      assert.deepEqual(hydrated.schema.tree, schemaC.tree);
       done();
     });
   });

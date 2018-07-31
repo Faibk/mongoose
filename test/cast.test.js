@@ -53,6 +53,18 @@ describe('cast: ', function() {
       done();
     });
 
+    it('casts $in with empty array (gh-5913)', function(done) {
+      var schema = new Schema({
+        v: Number,
+        arr: [Number]
+      });
+      assert.deepEqual(cast(schema, { v: { $in: [1, []] } }),
+        { v: { $in: [1, []] } });
+      assert.deepEqual(cast(schema, { arr: { $in: [1, []] } }),
+        { arr: { $in: [1, []] } });
+      done();
+    });
+
     it('casts array with Numbers to $in query when values are strings', function(done) {
       var schema = new Schema({x: Number});
       var numbers = ['42', '25'];
@@ -74,21 +86,21 @@ describe('cast: ', function() {
     it('with a number', function(done) {
       var schema = new Schema({x: Buffer});
       assert.deepEqual(cast(schema, {x: {$bitsAllClear: 3}}),
-          {x: {$bitsAllClear: 3}});
+        {x: {$bitsAllClear: 3}});
       done();
     });
 
     it('with an array', function(done) {
       var schema = new Schema({x: Buffer});
       assert.deepEqual(cast(schema, {x: {$bitsAllSet: [2, '3']}}),
-          {x: {$bitsAllSet: [2, 3]}});
+        {x: {$bitsAllSet: [2, 3]}});
       done();
     });
 
     it('with a buffer', function(done) {
       var schema = new Schema({x: Number});
       assert.deepEqual(cast(schema, {x: {$bitsAnyClear: new Buffer([3])}}),
-          {x: {$bitsAnyClear: new Buffer([3])}});
+        {x: {$bitsAnyClear: new Buffer([3])}});
       done();
     });
 

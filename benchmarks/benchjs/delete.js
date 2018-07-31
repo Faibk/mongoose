@@ -21,10 +21,13 @@ mongoose.connect('mongodb://localhost/mongoose-bench', function(err) {
   if (err) {
     throw err;
   }
-  mongo.connect('mongodb://localhost/mongoose-bench', function(err, db) {
+  mongo.connect('mongodb://localhost', function(err, client) {
     if (err) {
       throw err;
     }
+
+    var db = client.db('mongoose-bench');
+
     var UserSchema = new Schema({
       name: String,
       age: Number,
@@ -80,7 +83,7 @@ mongoose.connect('mongodb://localhost/mongoose-bench', function(err) {
         if (err) {
           throw err;
         }
-        db.close();
+        client.close();
       });
     }
 
@@ -105,24 +108,24 @@ mongoose.connect('mongodb://localhost/mongoose-bench', function(err) {
         });
       }
     })
-    .on('cycle', function(evt) {
-      if (process.env.MONGOOSE_DEV || process.env.PULL_REQUEST) {
-        console.log(String(evt.target));
-      }
-    }).on('complete', function() {
-      closeDB();
-      if (!process.env.MONGOOSE_DEV && !process.env.PULL_REQUEST) {
-        var outObj = {};
-        this.forEach(function(item) {
-          var out = {};
-          out.stats = item.stats;
-          delete out.stats.sample;
-          out.ops = item.hz;
-          outObj[item.name.replace(/\s/g, '')] = out;
-        });
-        console.dir(outObj, {depth: null, colors: true});
-      }
-    });
+      .on('cycle', function(evt) {
+        if (process.env.MONGOOSE_DEV || process.env.PULL_REQUEST) {
+          console.log(String(evt.target));
+        }
+      }).on('complete', function() {
+        closeDB();
+        if (!process.env.MONGOOSE_DEV && !process.env.PULL_REQUEST) {
+          var outObj = {};
+          this.forEach(function(item) {
+            var out = {};
+            out.stats = item.stats;
+            delete out.stats.sample;
+            out.ops = item.hz;
+            outObj[item.name.replace(/\s/g, '')] = out;
+          });
+          console.dir(outObj, {depth: null, colors: true});
+        }
+      });
     function next() {
       suite.run({async: true});
     }

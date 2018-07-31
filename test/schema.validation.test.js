@@ -1,18 +1,21 @@
+'use strict';
+
 /**
  * Module dependencies.
  */
 
-var start = require('./common');
-var mongoose = start.mongoose;
-var assert = require('power-assert');
-var Schema = mongoose.Schema;
-var ValidatorError = mongoose.Error.ValidatorError;
-var SchemaTypes = Schema.Types;
-var ObjectId = SchemaTypes.ObjectId;
-var Mixed = SchemaTypes.Mixed;
-var DocumentObjectId = mongoose.Types.ObjectId;
-var random = require('../lib/utils').random;
-var Promise = require('bluebird');
+const Promise = require('bluebird');
+const assert = require('assert');
+const random = require('../lib/utils').random;
+const start = require('./common');
+
+const mongoose = start.mongoose;
+const Schema = mongoose.Schema;
+const ValidatorError = mongoose.Error.ValidatorError;
+const SchemaTypes = Schema.Types;
+const ObjectId = SchemaTypes.ObjectId;
+const Mixed = SchemaTypes.Mixed;
+const DocumentObjectId = mongoose.Types.ObjectId;
 
 describe('schema', function() {
   describe('validation', function() {
@@ -45,7 +48,7 @@ describe('schema', function() {
     });
 
     it('string enum', function(done) {
-      var Test = new Schema({
+      const Test = new Schema({
         complex: {type: String, enum: ['a', 'b', undefined, 'c', null]},
         state: {type: String}
       });
@@ -87,7 +90,7 @@ describe('schema', function() {
       Test.path('state').doValidate('x', function(err) {
         assert.ok(err instanceof ValidatorError);
         assert.equal(err.message,
-            'enum validator failed for path `state`: test');
+          'enum validator failed for path `state`: test');
       });
 
       Test.path('state').doValidate('opening', function(err) {
@@ -102,7 +105,7 @@ describe('schema', function() {
     });
 
     it('string regexp', function(done) {
-      var Test = new Schema({
+      const Test = new Schema({
         simple: {type: String, match: /[a-z]/}
       });
 
@@ -148,11 +151,12 @@ describe('schema', function() {
 
     describe('non-required fields', function() {
       describe('are validated correctly', function() {
-        var db, Person;
+        let db;
+        let Person;
 
         before(function() {
           db = start();
-          var PersonSchema = new Schema({
+          const PersonSchema = new Schema({
             name: {type: String},
             num_cars: {type: Number, min: 20}
           });
@@ -164,7 +168,7 @@ describe('schema', function() {
         });
 
         it('and can be set to "undefined" (gh-1594)', function(done) {
-          var p = new Person({name: 'Daniel'});
+          const p = new Person({name: 'Daniel'});
           p.num_cars = 25;
 
           p.save(function(err) {
@@ -188,7 +192,7 @@ describe('schema', function() {
       });
 
       it('number min and max', function(done) {
-        var Tobi = new Schema({
+        const Tobi = new Schema({
           friends: {type: Number, max: 15, min: 5}
         });
 
@@ -226,7 +230,7 @@ describe('schema', function() {
 
     describe('required', function() {
       it('string required', function(done) {
-        var Test = new Schema({
+        const Test = new Schema({
           simple: String
         });
 
@@ -253,14 +257,14 @@ describe('schema', function() {
       });
 
       it('string conditional required', function(done) {
-        var Test = new Schema({
+        const Test = new Schema({
           simple: String
         });
 
-        var required = true,
-            isRequired = function() {
-              return required;
-            };
+        let required = true;
+        let isRequired = function() {
+          return required;
+        };
 
         Test.path('simple').required(isRequired);
         assert.equal(Test.path('simple').validators.length, 1);
@@ -303,7 +307,7 @@ describe('schema', function() {
       });
 
       it('number required', function(done) {
-        var Edwald = new Schema({
+        const Edwald = new Schema({
           friends: {type: Number, required: true}
         });
 
@@ -323,7 +327,7 @@ describe('schema', function() {
       });
 
       it('date required', function(done) {
-        var Loki = new Schema({
+        const Loki = new Schema({
           birth_date: {type: Date, required: true}
         });
 
@@ -343,7 +347,7 @@ describe('schema', function() {
       });
 
       it('date not empty string (gh-3132)', function(done) {
-        var HappyBirthday = new Schema({
+        const HappyBirthday = new Schema({
           date: {type: Date, required: true}
         });
 
@@ -354,7 +358,7 @@ describe('schema', function() {
       });
 
       it('objectid required', function(done) {
-        var Loki = new Schema({
+        const Loki = new Schema({
           owner: {type: ObjectId, required: true}
         });
 
@@ -373,88 +377,99 @@ describe('schema', function() {
       });
 
       it('array required', function(done) {
-        var Loki = new Schema({
+        const Loki = new Schema({
           likes: {type: Array, required: true}
         });
 
+        let remaining = 2;
+
         Loki.path('likes').doValidate(null, function(err) {
           assert.ok(err instanceof ValidatorError);
+          --remaining || done();
         });
 
         Loki.path('likes').doValidate(undefined, function(err) {
           assert.ok(err instanceof ValidatorError);
+          --remaining || done();
         });
-
-        Loki.path('likes').doValidate([], function(err) {
-          assert.ok(err instanceof ValidatorError);
-        });
-        done();
       });
 
       it('boolean required', function(done) {
-        var Animal = new Schema({
+        const Animal = new Schema({
           isFerret: {type: Boolean, required: true}
         });
 
+        let remaining = 4;
+
         Animal.path('isFerret').doValidate(null, function(err) {
           assert.ok(err instanceof ValidatorError);
+          --remaining || done();
         });
 
         Animal.path('isFerret').doValidate(undefined, function(err) {
           assert.ok(err instanceof ValidatorError);
+          --remaining || done();
         });
 
         Animal.path('isFerret').doValidate(true, function(err) {
           assert.ifError(err);
+          --remaining || done();
         });
 
         Animal.path('isFerret').doValidate(false, function(err) {
           assert.ifError(err);
+          --remaining || done();
         });
-        done();
       });
 
       it('mixed required', function(done) {
-        var Animal = new Schema({
+        const Animal = new Schema({
           characteristics: {type: Mixed, required: true}
         });
 
+        let remaining = 4;
+
         Animal.path('characteristics').doValidate(null, function(err) {
           assert.ok(err instanceof ValidatorError);
+          --remaining || done();
         });
 
         Animal.path('characteristics').doValidate(undefined, function(err) {
           assert.ok(err instanceof ValidatorError);
+          --remaining || done();
         });
 
         Animal.path('characteristics').doValidate({
           aggresive: true
         }, function(err) {
           assert.ifError(err);
+          --remaining || done();
         });
 
         Animal.path('characteristics').doValidate('none available', function(err) {
           assert.ifError(err);
+          --remaining || done();
         });
-        done();
       });
     });
 
     describe('async', function() {
       it('works', function(done) {
-        var executed = 0;
+        let executed = 0;
 
-        function validator(value, fn) {
-          setTimeout(function() {
-            executed++;
-            fn(value === true);
-            if (executed === 2) {
-              done();
-            }
-          }, 5);
+        function validator(value) {
+          return new global.Promise(function(resolve) {
+            setTimeout(function() {
+              executed++;
+              resolve(value === true);
+              if (executed === 2) {
+                done();
+              }
+            }, 5);
+          });
         }
 
-        var Animal = new Schema({
+        const Animal = new Schema({
           ferret: {type: Boolean, validate: validator}
         });
 
@@ -467,40 +482,9 @@ describe('schema', function() {
         });
       });
 
-      it('multiple', function(done) {
-        var executed = 0;
-
-        function validator(value, fn) {
-          setTimeout(function() {
-            executed++;
-            fn(value === true);
-            if (executed === 2) {
-              done();
-            }
-          }, 5);
-        }
-
-        var Animal = new Schema({
-          ferret: {
-            type: Boolean,
-            validate: [{
-              validator: validator,
-              msg: 'validator1'
-            }, {
-              validator: validator,
-              msg: 'validator2'
-            }]
-          }
-        });
-
-        Animal.path('ferret').doValidate(true, function(err) {
-          assert.ifError(err);
-        });
-      });
-
       it('multiple sequence', function(done) {
-        var validator1Executed = false,
-            validator2Executed = false;
+        let validator1Executed = false;
+        let validator2Executed = false;
 
         function validator1(value, fn) {
           setTimeout(function() {
@@ -519,16 +503,13 @@ describe('schema', function() {
           }, 5);
         }
 
-        var Animal = new Schema({
+        const Animal = new Schema({
           ferret: {
             type: Boolean,
-            validate: [{
-              validator: validator1,
-              msg: 'validator1'
-            }, {
-              validator: validator2,
-              msg: 'validator2'
-            }]
+            validate: [
+              { validator: validator1, msg: 'validator1' },
+              { validator: validator2, msg: 'validator2' }
+            ].map(function(v) { return Object.assign(v, { isAsync: true }); })
           }
         });
 
@@ -538,19 +519,23 @@ describe('schema', function() {
       });
 
       it('scope', function(done) {
-        var called = false;
+        let called = false;
 
-        function validator(value, fn) {
-          assert.equal(this.a, 'b');
-
-          setTimeout(function() {
-            called = true;
-            fn(true);
-          }, 5);
+        function validator() {
+          return new global.Promise(resolve => {
+            assert.equal(this.a, 'b');
+            setTimeout(function() {
+              called = true;
+              resolve(true);
+            }, 5);
+          });
         }
 
-        var Animal = new Schema({
-          ferret: {type: Boolean, validate: validator}
+        const Animal = new Schema({
+          ferret: {
+            type: Boolean,
+            validate: validator
+          }
         });
 
         Animal.path('ferret').doValidate(true, function(err) {
@@ -564,7 +549,7 @@ describe('schema', function() {
     describe('messages', function() {
       describe('are customizable', function() {
         it('within schema definitions', function(done) {
-          var schema = new Schema({
+          const schema = new Schema({
             name: {type: String, enum: ['one', 'two']},
             myenum: {type: String, enum: {values: ['x'], message: 'enum validator failed for path: {PATH} with {VALUE}'}},
             requiredString1: {type: String, required: true},
@@ -577,9 +562,9 @@ describe('schema', function() {
             numMax1: {type: Number, max: [20, 'hey, {PATH} ({VALUE}) is greater than {MAX}']}
           });
 
-          var A = mongoose.model('schema-validation-messages-' + random(), schema);
+          const A = mongoose.model('schema-validation-messages-' + random(), schema);
 
-          var a = new A;
+          const a = new A;
           a.validate(function(err) {
             assert.equal(err.errors.requiredString1, 'Path `requiredString1` is required.');
             assert.equal(err.errors.requiredString2, 'oops, requiredString2 is missing. required');
@@ -612,15 +597,15 @@ describe('schema', function() {
         });
 
         it('for custom validators', function(done) {
-          var validate = function() {
+          const validate = function() {
             return false;
           };
-          var validator = [validate, '{PATH} failed validation ({VALUE})'];
+          const validator = [validate, '{PATH} failed validation ({VALUE})'];
 
-          var schema = new Schema({x: {type: [], validate: validator}});
-          var M = mongoose.model('custom-validator-' + random(), schema);
+          const schema = new Schema({x: {type: [], validate: validator}});
+          const M = mongoose.model('custom-validator-' + random(), schema);
 
-          var m = new M({x: [3, 4, 5, 6]});
+          const m = new M({x: [3, 4, 5, 6]});
 
           m.validate(function(err) {
             assert.equal(String(err.errors.x), 'x failed validation (3,4,5,6)');
@@ -630,12 +615,12 @@ describe('schema', function() {
         });
 
         it('custom validators with isAsync = false', function(done) {
-          var validate = function(v, opts) {
+          const validate = function(v, opts) {
             // Make eslint not complain about unused vars
             return !!(v && opts && false);
           };
 
-          var schema = new Schema({
+          const schema = new Schema({
             x: {
               type: String,
               validate: {
@@ -644,9 +629,9 @@ describe('schema', function() {
               }
             }
           });
-          var M = mongoose.model('custom-validator-async-' + random(), schema);
+          const M = mongoose.model('custom-validator-async-' + random(), schema);
 
-          var m = new M({x: 'test'});
+          const m = new M({x: 'test'});
 
           m.validate(function(err) {
             assert.ok(err.errors['x']);
@@ -655,12 +640,12 @@ describe('schema', function() {
         });
 
         it('custom validators with isAsync and .validate() (gh-5125)', function(done) {
-          var validate = function(v, opts) {
+          const validate = function(v, opts) {
             // Make eslint not complain about unused vars
             return !!(v && opts && false);
           };
 
-          var schema = new Schema({
+          const schema = new Schema({
             x: {
               type: String
             }
@@ -671,9 +656,9 @@ describe('schema', function() {
             validator: validate,
             message: 'Custom error message!'
           });
-          var M = mongoose.model('gh5125', schema);
+          const M = mongoose.model('gh5125', schema);
 
-          var m = new M({x: 'test'});
+          const m = new M({x: 'test'});
 
           m.validate(function(err) {
             assert.ok(err.errors['x']);
@@ -683,11 +668,11 @@ describe('schema', function() {
         });
 
         it('custom validators with isAsync and promise (gh-5171)', function(done) {
-          var validate = function(v) {
+          const validate = function(v) {
             return Promise.resolve(v === 'test');
           };
 
-          var schema = new Schema({
+          const schema = new Schema({
             x: {
               type: String
             }
@@ -697,9 +682,9 @@ describe('schema', function() {
             isAsync: true,
             validator: validate
           });
-          var M = mongoose.model('gh5171', schema);
+          const M = mongoose.model('gh5171', schema);
 
-          var m = new M({x: 'not test'});
+          const m = new M({x: 'not test'});
 
           m.validate(function(err) {
             assert.ok(err.errors['x']);
@@ -708,7 +693,7 @@ describe('schema', function() {
         });
 
         it('supports custom properties (gh-2132)', function(done) {
-          var schema = new Schema({
+          const schema = new Schema({
             x: {
               type: String,
               validate: [{
@@ -720,31 +705,32 @@ describe('schema', function() {
               }]
             }
           });
-          var M = mongoose.model('gh-2132', schema, 'gh-2132');
+          const M = mongoose.model('gh-2132', schema, 'gh-2132');
 
-          var m = new M({x: 'a'});
+          const m = new M({x: 'a'});
           m.validate(function(err) {
             assert.equal(err.errors.x.toString(), 'Error code 25');
+            assert.equal(err.errors.x.properties.message, 'Error code 25');
             assert.equal(err.errors.x.properties.errorCode, 25);
             done();
           });
         });
 
         it('supports dynamic message for validators with callback (gh-1936)', function(done) {
-          var schema = new Schema({
+          const schema = new Schema({
             x: {
               type: String,
               validate: [{
-                validator: function(value, fn) {
-                  fn(false, 'Custom message');
+                validator: function() {
+                  throw new Error('Custom message');
                 },
                 msg: 'Does not matter'
               }]
             }
           });
-          var M = mongoose.model('gh-1936', schema, 'gh-1936');
+          const M = mongoose.model('gh-1936', schema, 'gh-1936');
 
-          var m = new M({x: 'whatever'});
+          const m = new M({x: 'whatever'});
           m.validate(function(err) {
             assert.equal(err.errors.x.toString(), 'Custom message');
             done();
@@ -760,15 +746,16 @@ describe('schema', function() {
             return false;
           }
 
-          var validator = [validate, '{PATH} failed validation ({VALUE})', 'customType'];
+          const validator = [validate, '{PATH} failed validation ({VALUE})', 'customType'];
 
-          var schema = new Schema({x: {type: [], validate: validator}});
-          var M = mongoose.model('custom-validator-' + random(), schema);
+          const schema = new Schema({x: {type: [], validate: validator}});
+          const M = mongoose.model('custom-validator-' + random(), schema);
 
-          var m = new M({x: [3, 4, 5, 6]});
+          const m = new M({x: [3, 4, 5, 6]});
 
           m.validate(function(err) {
             assert.equal(String(err.errors.x), 'x failed validation (3,4,5,6)');
+            assert.equal(err.errors.x.properties.message, 'x failed validation (3,4,5,6)');
             assert.equal(err.errors.x.kind, 'customType');
             done();
           });
@@ -779,13 +766,13 @@ describe('schema', function() {
             return false;
           }
 
-          var validator = [
+          const validator = [
             {validator: validate, msg: '{PATH} failed validation ({VALUE})', type: 'customType'}
           ];
-          var schema = new Schema({x: {type: [], validate: validator}});
-          var M = mongoose.model('custom-validator-' + random(), schema);
+          const schema = new Schema({x: {type: [], validate: validator}});
+          const M = mongoose.model('custom-validator-' + random(), schema);
 
-          var m = new M({x: [3, 4, 5, 6]});
+          const m = new M({x: [3, 4, 5, 6]});
 
           m.validate(function(err) {
             assert.equal(String(err.errors.x), 'x failed validation (3,4,5,6)');
@@ -797,10 +784,10 @@ describe('schema', function() {
     });
 
     it('should clear validator errors (gh-2302)', function(done) {
-      var userSchema = new Schema({name: {type: String, required: true}});
-      var User = mongoose.model('gh-2302', userSchema, 'gh-2302');
+      const userSchema = new Schema({name: {type: String, required: true}});
+      const User = mongoose.model('gh-2302', userSchema, 'gh-2302');
 
-      var user = new User();
+      const user = new User();
       user.validate(function(err) {
         assert.ok(err);
         assert.ok(user.errors);
@@ -815,25 +802,25 @@ describe('schema', function() {
     });
 
     it('should allow an array of enums (gh-661)', function(done) {
-      var validBreakfastFoods = ['bacon', 'eggs', 'steak', 'coffee', 'butter'];
-      var breakfastSchema = new Schema({
+      const validBreakfastFoods = ['bacon', 'eggs', 'steak', 'coffee', 'butter'];
+      const breakfastSchema = new Schema({
         foods: [{type: String, enum: validBreakfastFoods}]
       });
-      var Breakfast = mongoose.model('gh-661', breakfastSchema, 'gh-661');
+      const Breakfast = mongoose.model('gh-661', breakfastSchema, 'gh-661');
 
-      var goodBreakfast = new Breakfast({foods: ['eggs', 'bacon']});
+      const goodBreakfast = new Breakfast({foods: ['eggs', 'bacon']});
       goodBreakfast.validate(function(error) {
         assert.ifError(error);
 
-        var badBreakfast = new Breakfast({foods: ['tofu', 'waffles', 'coffee']});
+        const badBreakfast = new Breakfast({foods: ['tofu', 'waffles', 'coffee']});
         badBreakfast.validate(function(error) {
           assert.ok(error);
           assert.ok(error.errors['foods.0']);
           assert.equal(error.errors['foods.0'].message,
-              '`tofu` is not a valid enum value for path `foods`.');
+            '`tofu` is not a valid enum value for path `foods`.');
           assert.ok(error.errors['foods.1']);
           assert.equal(error.errors['foods.1'].message,
-              '`waffles` is not a valid enum value for path `foods`.');
+            '`waffles` is not a valid enum value for path `foods`.');
           assert.ok(!error.errors['foods.2']);
 
           done();
@@ -842,21 +829,21 @@ describe('schema', function() {
     });
 
     it('should allow an array of subdocuments with enums (gh-3521)', function(done) {
-      var coolSchema = new Schema({
+      const coolSchema = new Schema({
         votes: [{
           vote: {type: String, enum: ['cool', 'not-cool']}
         }]
       });
-      var Cool = mongoose.model('gh-3521', coolSchema, 'gh-3521');
+      const Cool = mongoose.model('gh-3521', coolSchema, 'gh-3521');
 
-      var cool = new Cool();
+      const cool = new Cool();
       cool.votes.push(cool.votes.create({
         vote: 'cool'
       }));
       cool.validate(function(error) {
         assert.ifError(error);
 
-        var terrible = new Cool();
+        const terrible = new Cool();
         terrible.votes.push(terrible.votes.create({
           vote: 'terrible'
         }));
@@ -865,7 +852,7 @@ describe('schema', function() {
           assert.ok(error);
           assert.ok(error.errors['votes.0.vote']);
           assert.equal(error.errors['votes.0.vote'].message,
-              '`terrible` is not a valid enum value for path `vote`.');
+            '`terrible` is not a valid enum value for path `vote`.');
 
           done();
         });
@@ -873,7 +860,7 @@ describe('schema', function() {
     });
 
     it('should validate subdocuments subproperty enums (gh-4111)', function(done) {
-      var M = mongoose.model('M', new Schema({
+      const M = mongoose.model('M', new Schema({
         p: {
           val: { type: String, enum: ['test'] }
         },
@@ -884,9 +871,9 @@ describe('schema', function() {
         }]
       }));
 
-      var model = new M();
+      const model = new M();
       model.p = { val: 'test' };
-      var child = model.children.create();
+      const child = model.children.create();
       child.prop = {
         val: 'valid'
       };
@@ -911,17 +898,17 @@ describe('schema', function() {
     });
 
     it('doesnt do double validation on document arrays (gh-2618)', function(done) {
-      var A = new Schema({str: String});
-      var B = new Schema({a: [A]});
-      var validateCalls = 0;
-      B.path('a').validate(function(val, next) {
+      const A = new Schema({str: String});
+      let B = new Schema({a: [A]});
+      let validateCalls = 0;
+      B.path('a').validate(function() {
         ++validateCalls;
-        next();
+        return true;
       });
 
       B = mongoose.model('b', B);
 
-      var p = new B();
+      const p = new B();
       p.a.push({str: 'asdf'});
       p.validate(function(err) {
         assert.ifError(err);
@@ -931,13 +918,13 @@ describe('schema', function() {
     });
 
     it('doesnt do double validation on document arrays underneath nested (gh-5411)', function(done) {
-      var callScope = [];
+      let callScope = [];
 
       function myValidator() {
         callScope.push(this);
       }
 
-      var TestSchema = new Schema({
+      const TestSchema = new Schema({
         nest1: {
           nest2: {
             nestarr: [new Schema({
@@ -951,8 +938,8 @@ describe('schema', function() {
         }
       });
 
-      var Test = mongoose.model('gh5411', TestSchema);
-      var testInstance = new Test({
+      const Test = mongoose.model('gh5411', TestSchema);
+      const testInstance = new Test({
         nest1: {
           nest2: {
             nestarr: [{
@@ -977,13 +964,13 @@ describe('schema', function() {
     });
 
     it('no double validation on set nested docarray (gh-4145)', function(done) {
-      var calls = 0;
-      var myValidator = function() {
+      let calls = 0;
+      const myValidator = function() {
         ++calls;
         return true;
       };
 
-      var InnerSchema = new mongoose.Schema({
+      const InnerSchema = new mongoose.Schema({
         myfield: {
           type: String,
           validate: {
@@ -994,16 +981,16 @@ describe('schema', function() {
         sibling: String
       });
 
-      var MySchema = new mongoose.Schema({
+      const MySchema = new mongoose.Schema({
         nest: {
           myarray: [InnerSchema]
         },
         rootSibling: String
       });
 
-      var Model = mongoose.model('gh4145', MySchema);
+      const Model = mongoose.model('gh4145', MySchema);
 
-      var instance = new Model({
+      const instance = new Model({
         rootSibling: 'This is the root sibling'
       });
       // Direct object assignment
@@ -1022,12 +1009,12 @@ describe('schema', function() {
     });
 
     it('returns cast errors', function(done) {
-      var breakfastSchema = new Schema({
+      const breakfastSchema = new Schema({
         eggs: Number
       });
-      var Breakfast = mongoose.model('gh-2611', breakfastSchema, 'gh-2611');
+      const Breakfast = mongoose.model('gh-2611', breakfastSchema, 'gh-2611');
 
-      var bad = new Breakfast({eggs: 'none'});
+      const bad = new Breakfast({eggs: 'none'});
       bad.validate(function(error) {
         assert.ok(error);
         done();
@@ -1035,11 +1022,11 @@ describe('schema', function() {
     });
 
     it('handles multiple subdocument errors (gh-2589)', function(done) {
-      var foodSchema = new Schema({name: {type: String, required: true, enum: ['bacon', 'eggs']}});
-      var breakfast = new Schema({foods: [foodSchema], id: Number});
+      const foodSchema = new Schema({name: {type: String, required: true, enum: ['bacon', 'eggs']}});
+      const breakfast = new Schema({foods: [foodSchema], id: Number});
 
-      var Breakfast = mongoose.model('gh-2589', breakfast, 'gh-2589');
-      var bad = new Breakfast({foods: [{name: 'tofu'}, {name: 'waffles'}], id: 'Not a number'});
+      const Breakfast = mongoose.model('gh-2589', breakfast, 'gh-2589');
+      const bad = new Breakfast({foods: [{name: 'tofu'}, {name: 'waffles'}], id: 'Not a number'});
       bad.validate(function(error) {
         assert.ok(error);
         assert.deepEqual(['id', 'foods.0.name', 'foods.1.name'], Object.keys(error.errors));
@@ -1048,13 +1035,13 @@ describe('schema', function() {
     });
 
     it('handles subdocument cast errors (gh-2819)', function(done) {
-      var foodSchema = new Schema({eggs: {type: Number, required: true}});
-      var breakfast = new Schema({foods: [foodSchema], id: Number});
+      const foodSchema = new Schema({eggs: {type: Number, required: true}});
+      const breakfast = new Schema({foods: [foodSchema], id: Number});
 
-      var Breakfast = mongoose.model('gh-2819', breakfast, 'gh-2819');
+      const Breakfast = mongoose.model('gh-2819', breakfast, 'gh-2819');
 
       // Initially creating subdocs with cast errors
-      var bad = new Breakfast({foods: [{eggs: 'Not a number'}], id: 'Not a number'});
+      const bad = new Breakfast({foods: [{eggs: 'Not a number'}], id: 'Not a number'});
       bad.validate(function(error) {
         assert.ok(error);
         assert.deepEqual(['foods.0.eggs', 'id'], Object.keys(error.errors).sort());
@@ -1096,14 +1083,15 @@ describe('schema', function() {
     });
 
     it('fails when you try to set a nested path to a primitive (gh-2592)', function(done) {
-      var breakfast = new Schema({foods: {bacon: Number, eggs: Number}});
+      const breakfast = new Schema({foods: {bacon: Number, eggs: Number}});
 
-      var Breakfast = mongoose.model('gh-2592', breakfast, 'gh-2592');
-      var bad = new Breakfast();
+      const Breakfast = mongoose.model('gh-2592', breakfast, 'gh-2592');
+
+      const bad = new Breakfast();
       bad.foods = 'waffles';
       bad.validate(function(error) {
         assert.ok(error);
-        var errorMessage = 'foods: Cast to Object failed for value ' +
+        const errorMessage = 'foods: Cast to Object failed for value ' +
             '"waffles" at path "foods"';
         assert.ok(error.toString().indexOf(errorMessage) !== -1, error.toString());
         done();
@@ -1111,40 +1099,40 @@ describe('schema', function() {
     });
 
     it('doesnt execute other validators if required fails (gh-2725)', function(done) {
-      var breakfast = new Schema({description: {type: String, required: true, maxlength: 50}});
+      const breakfast = new Schema({description: {type: String, required: true, maxlength: 50}});
 
-      var Breakfast = mongoose.model('gh2725', breakfast, 'gh2725');
-      var bad = new Breakfast({});
+      const Breakfast = mongoose.model('gh2725', breakfast, 'gh2725');
+      const bad = new Breakfast({});
       bad.validate(function(error) {
         assert.ok(error);
-        var errorMessage = 'ValidationError: description: Path `description` is required.';
+        const errorMessage = 'ValidationError: description: Path `description` is required.';
         assert.equal(errorMessage, error.toString());
         done();
       });
     });
 
     it('doesnt execute other validators if required fails (gh-3025)', function(done) {
-      var breakfast = new Schema({description: {type: String, required: true, maxlength: 50}});
+      const breakfast = new Schema({description: {type: String, required: true, maxlength: 50}});
 
-      var Breakfast = mongoose.model('gh3025', breakfast, 'gh3025');
-      var bad = new Breakfast({});
-      var error = bad.validateSync();
+      const Breakfast = mongoose.model('gh3025', breakfast, 'gh3025');
+      const bad = new Breakfast({});
+      const error = bad.validateSync();
 
       assert.ok(error);
-      var errorMessage = 'ValidationError: description: Path `description` is required.';
+      const errorMessage = 'ValidationError: description: Path `description` is required.';
       assert.equal(errorMessage, error.toString());
       done();
     });
 
     it('validateSync allows you to filter paths (gh-3153)', function(done) {
-      var breakfast = new Schema({
+      const breakfast = new Schema({
         description: {type: String, required: true, maxlength: 50},
         other: {type: String, required: true}
       });
 
-      var Breakfast = mongoose.model('gh3153', breakfast, 'gh3153');
-      var bad = new Breakfast({});
-      var error = bad.validateSync('other');
+      const Breakfast = mongoose.model('gh3153', breakfast, 'gh3153');
+      const bad = new Breakfast({});
+      const error = bad.validateSync('other');
 
       assert.ok(error);
       assert.equal(Object.keys(error.errors).length, 1);
@@ -1154,20 +1142,20 @@ describe('schema', function() {
     });
 
     it('adds required validators to the front of the list (gh-2843)', function(done) {
-      var breakfast = new Schema({description: {type: String, maxlength: 50, required: true}});
+      const breakfast = new Schema({description: {type: String, maxlength: 50, required: true}});
 
-      var Breakfast = mongoose.model('gh2843', breakfast, 'gh2843');
-      var bad = new Breakfast({});
+      const Breakfast = mongoose.model('gh2843', breakfast, 'gh2843');
+      const bad = new Breakfast({});
       bad.validate(function(error) {
         assert.ok(error);
-        var errorMessage = 'ValidationError: description: Path `description` is required.';
+        const errorMessage = 'ValidationError: description: Path `description` is required.';
         assert.equal(errorMessage, error.toString());
         done();
       });
     });
 
     it('sets path correctly when setter throws exception (gh-2832)', function(done) {
-      var breakfast = new Schema({
+      const breakfast = new Schema({
         description: {
           type: String, set: function() {
             throw new Error('oops');
@@ -1175,10 +1163,10 @@ describe('schema', function() {
         }
       });
 
-      var Breakfast = mongoose.model('gh2832', breakfast, 'gh2832');
+      const Breakfast = mongoose.model('gh2832', breakfast, 'gh2832');
       Breakfast.create({description: undefined}, function(error) {
         assert.ok(error);
-        var errorMessage = 'ValidationError: description: Cast to String failed for value "undefined" at path "description"';
+        const errorMessage = 'ValidationError: description: Cast to String failed for value "undefined" at path "description"';
         assert.equal(errorMessage, error.toString());
         assert.ok(error.errors.description);
         assert.equal(error.errors.description.reason.toString(), 'Error: oops');
@@ -1187,17 +1175,17 @@ describe('schema', function() {
     });
 
     it('allows you to validate embedded doc that was .create()-ed (gh-2902) (gh-2929)', function(done) {
-      var parentSchema = mongoose.Schema({
+      const parentSchema = mongoose.Schema({
         children: [{name: {type: String, required: true}}]
       });
 
-      var Parent = mongoose.model('gh2902', parentSchema);
+      const Parent = mongoose.model('gh2902', parentSchema);
 
-      var p = new Parent();
-      var n = p.children.create({name: '2'});
+      const p = new Parent();
+      const n = p.children.create({name: '2'});
       n.validate(function(error) {
         assert.ifError(error);
-        var bad = p.children.create({});
+        const bad = p.children.create({});
         p.children.push(bad);
         bad.validate(function(error) {
           assert.ok(error);
@@ -1208,7 +1196,7 @@ describe('schema', function() {
     });
 
     it('returns correct kind for user defined custom validators (gh-2885)', function(done) {
-      var s = mongoose.Schema({
+      const s = mongoose.Schema({
         n: {
           type: String, validate: {
             validator: function() {
@@ -1217,9 +1205,9 @@ describe('schema', function() {
           }, msg: 'fail'
         }
       });
-      var M = mongoose.model('gh2885', s);
+      const M = mongoose.model('gh2885', s);
 
-      var m = new M({n: 'test'});
+      const m = new M({n: 'test'});
       m.validate(function(error) {
         assert.ok(error);
         assert.equal(error.errors.n.kind, 'user defined');
@@ -1228,10 +1216,10 @@ describe('schema', function() {
     });
 
     it('enums report kind (gh-3009)', function(done) {
-      var s = mongoose.Schema({n: {type: String, enum: ['a', 'b']}});
-      var M = mongoose.model('gh3009', s);
+      const s = mongoose.Schema({n: {type: String, enum: ['a', 'b']}});
+      const M = mongoose.model('gh3009', s);
 
-      var m = new M({n: 'test'});
+      const m = new M({n: 'test'});
       m.validate(function(error) {
         assert.ok(error);
         assert.equal(error.errors.n.kind, 'enum');
@@ -1239,19 +1227,87 @@ describe('schema', function() {
       });
     });
 
+    it('enums on arrays (gh-6102)', function() {
+      assert.throws(function() {
+        new Schema({
+          array: {
+            type: [Number],
+            enum: [1]
+          }
+        });
+      }, /`enum` can only be set on an array of strings/);
+
+      const MySchema = new Schema({
+        array: {
+          type: [String],
+          enum: ['qwerty']
+        }
+      });
+
+      const Model = mongoose.model('gh6102', MySchema);
+      const doc = new Model({ array: ['test'] });
+
+      return doc.validate().
+        then(() => assert.ok(false)).
+        catch(err => assert.equal(err.name, 'ValidationError'));
+    });
+
     it('skips conditional required (gh-3539)', function(done) {
-      var s = mongoose.Schema({
+      const s = mongoose.Schema({
         n: {
           type: Number, required: function() {
             return false;
           }, min: 0
         }
       });
-      var M = mongoose.model('gh3539', s);
+      const M = mongoose.model('gh3539', s);
 
-      var m = new M();
+      const m = new M();
       m.validate(function(error) {
         assert.ifError(error);
+        done();
+      });
+    });
+
+    it('evaluate message function gh6523', function(done) {
+      const s = mongoose.Schema({
+        n: {
+          type: String,
+          // required: true,
+          validate: {
+            validator: function() {
+              return false;
+            },
+            message: function(properties) {
+              return 'fail ' + properties.value;
+            }
+          }
+        }
+      });
+      const M = mongoose.model('gh6523', s);
+      const m = new M({ n: 0 });
+
+      m.validate(function(error) {
+        assert.equal('fail 0', error.errors['n'].message);
+        done();
+      });
+    });
+
+    it('evaluate message function for required field gh6523', function(done) {
+      const s = mongoose.Schema({
+        n: {
+          type: String,
+          // required: true,
+          required: [true, function(properties) {
+            return 'fail ' + properties.path;
+          }]
+        }
+      });
+      const M = mongoose.model('gh6523-2', s);
+      const m = new M();
+
+      m.validate(function(error) {
+        assert.equal('fail n', error.errors['n'].message);
         done();
       });
     });

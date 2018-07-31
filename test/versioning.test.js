@@ -1,13 +1,17 @@
+'use strict';
+
 /**
  * Test dependencies.
  */
 
-var start = require('./common'),
-    mongoose = start.mongoose,
-    assert = require('power-assert'),
-    random = require('../lib/utils').random,
-    Schema = mongoose.Schema,
-    VersionError = mongoose.Error.VersionError;
+const assert = require('assert');
+const co = require('co');
+const random = require('../lib/utils').random;
+const start = require('./common');
+
+const mongoose = start.mongoose;
+const Schema = mongoose.Schema;
+const VersionError = mongoose.Error.VersionError;
 
 describe('versioning', function() {
   var db;
@@ -50,7 +54,7 @@ describe('versioning', function() {
         }
       });
 
-    mongoose.model('Versioning', BlogPost);
+    BlogPost = mongoose.model('Versioning', BlogPost).schema;
   });
 
   after(function(done) {
@@ -265,6 +269,8 @@ describe('versioning', function() {
     function test4(err, a, b) {
       assert.ok(/No matching document/.test(err), err);
       assert.equal(a._doc.__v, 5);
+      assert.equal(err.version, b._doc.__v - 1);
+      assert.deepEqual(err.modifiedPaths, ['numbers', 'numbers.2']);
       a.set('arr.0.0', 'updated');
       var d = a.$__delta();
       assert.equal(a._doc.__v, d[0].__v, 'version should be added to where clause');
@@ -404,8 +410,8 @@ describe('versioning', function() {
 
   it('versionKey is configurable', function(done) {
     var schema = new Schema(
-        {configured: 'bool'},
-        {versionKey: 'lolwat', collection: 'configuredversion' + random()});
+      {configured: 'bool'},
+      {versionKey: 'lolwat', collection: 'configuredversion' + random()});
     var V = db.model('ConfiguredVersionKey', schema);
     var v = new V({configured: true});
     v.save(function(err) {
@@ -524,6 +530,32 @@ describe('versioning', function() {
       obj = m.toObject({versionKey: false});
       assert.equal(obj.__v, undefined);
       done();
+    });
+  });
+
+  it('pull doesnt add version where clause (gh-6190)', function() {
+    const User = db.model('gh6190_User', new mongoose.Schema({
+      unreadPosts: [{type: mongoose.Schema.Types.ObjectId}]
+    }));
+
+    return co(function*() {
+      const id1 = new mongoose.Types.ObjectId();
+      const id2 = new mongoose.Types.ObjectId();
+      const doc = yield User.create({
+        unreadPosts: [id1, id2]
+      });
+
+      const doc1 = yield User.findById(doc._id);
+      const doc2 = yield User.findById(doc._id);
+
+      doc1.unreadPosts.pull(id1);
+      yield doc1.save();
+
+      doc2.unreadPosts.pull(id2);
+      yield doc2.save();
+
+      const doc3 = yield User.findById(doc._id);
+      assert.equal(doc3.unreadPosts.length, 0);
     });
   });
 

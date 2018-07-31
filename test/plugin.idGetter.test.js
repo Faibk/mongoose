@@ -1,17 +1,27 @@
+'use strict';
 
 /**
  * Module dependencies.
  */
 
-var start = require('./common'),
-    mongoose = start.mongoose,
-    assert = require('power-assert'),
-    Schema = mongoose.Schema;
+const assert = require('assert');
+const start = require('./common');
+
+const mongoose = start.mongoose;
+const Schema = mongoose.Schema;
 
 describe('id virtual getter', function() {
-  it('should work as expected with an ObjectId', function(done) {
-    var db = start();
+  var db;
 
+  before(function() {
+    db = start();
+  });
+
+  after(function(done) {
+    db.close(done);
+  });
+
+  it('should work as expected with an ObjectId', function(done) {
     var schema = new Schema({});
 
     var S = db.model('Basic', schema);
@@ -25,8 +35,6 @@ describe('id virtual getter', function() {
   });
 
   it('should be turned off when `id` option is set to false', function(done) {
-    var db = start();
-
     var schema = new Schema({}, {id: false});
 
     var S = db.model('NoIdGetter', schema);
@@ -41,13 +49,11 @@ describe('id virtual getter', function() {
 
 
   it('should be turned off when the schema has a set `id` path', function(done) {
-    var db = start();
-
     var schema = new Schema({
       id: String
     });
 
-    var S = db.model('NoIdGetter', schema);
+    var S = db.model('SchemaHasId', schema);
     S.create({ id: 'test'}, function(err, s) {
       assert.ifError(err);
 

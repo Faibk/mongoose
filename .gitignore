@@ -18,6 +18,7 @@ bin/mongoose.min.js
 coverage
 npm-debug.log
 data/
+.nyc_output/
 
 tools/31*
 
@@ -28,9 +29,15 @@ tools/31*
 *.njsproj
 *.sln
 
-# Visual STudio Code
+# Visual Studio Code
 .vscode
 
 *.key
 
 docs/*.html
+
+# Webpack output
+dist
+test/files/main.js
+
+package-lock.json

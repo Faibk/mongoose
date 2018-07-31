@@ -1,8 +1,11 @@
+'use strict';
+
 var start = require('./common'),
     mongoose = start.mongoose,
     Schema = mongoose.Schema,
     assert = require('power-assert'),
     random = require('../lib/utils').random,
+    co = require('co'),
     Query = require('../lib/query');
 
 describe('Query:', function() {
@@ -119,7 +122,10 @@ describe('Query:', function() {
 
       var nq = prodC(null, {limit: 3});
       assert.deepEqual(nq._mongooseOptions, {lean: true, limit: 3});
-      assert.deepEqual(nq.options, {sort: {title: 1}, limit: 3, retainKeyOrder: false});
+      assert.deepEqual(nq.options, {
+        sort: {title: 1},
+        limit: 3
+      });
       done();
     });
 
@@ -131,7 +137,10 @@ describe('Query:', function() {
 
       var nq = prodC(null, {limit: 3});
       assert.deepEqual(nq._mongooseOptions, {lean: true, limit: 3});
-      assert.deepEqual(nq.options, {sort: {title: 1}, limit: 3, retainKeyOrder: false});
+      assert.deepEqual(nq.options, {
+        sort: {title: 1},
+        limit: 3
+      });
       var nq2 = prodC(null, {limit: 5});
       assert.deepEqual(nq._mongooseOptions, {lean: true, limit: 3});
       assert.deepEqual(nq2._mongooseOptions, {lean: true, limit: 5});
@@ -142,7 +151,7 @@ describe('Query:', function() {
     it('creates subclasses of mquery', function(done) {
       var Product = db.model(prodName);
 
-      var opts = {safe: {w: 'majority'}, readPreference: 'p', retainKeyOrder: true};
+      var opts = {safe: {w: 'majority'}, readPreference: 'p'};
       var match = {title: 'test', count: {$gt: 101}};
       var select = {name: 1, count: 0};
       var update = {$set: {title: 'thing'}};
@@ -180,6 +189,28 @@ describe('Query:', function() {
       Q().findOneAndUpdate(query, update, function(error) {
         assert.ifError(error);
         done();
+      });
+    });
+
+    it('gets middleware from model (gh-6455)', function() {
+      var called = 0;
+      var schema = new Schema({
+        name: String
+      });
+
+      schema.pre('findOne', function logHook() {
+        called++;
+      });
+
+      var Test = db.model('gh6455', schema);
+      var test = new Test({ name: 'Romero' });
+      var Q = Test.findOne({}).toConstructor();
+
+      return co(function*() {
+        yield test.save();
+        let doc = yield Q();
+        assert.strictEqual(doc.name, 'Romero');
+        assert.strictEqual(called, 1);
       });
     });
   });

@@ -1,14 +1,19 @@
+'use strict';
+
 /**
  * Module dependencies.
  */
 
-var start = require('./common');
-var mongoose = start.mongoose;
-var DocumentObjectId = mongoose.Types.ObjectId;
-var Schema = mongoose.Schema;
-var assert = require('power-assert');
-var random = require('../lib/utils').random;
-var Query = require('../lib/query');
+const start = require('./common');
+const Query = require('../lib/query');
+const assert = require('power-assert');
+const async = require('async');
+const co = require('co');
+const random = require('../lib/utils').random;
+
+const mongoose = start.mongoose;
+const Schema = mongoose.Schema;
+const DocumentObjectId = mongoose.Types.ObjectId;
 
 /**
  * Test.
@@ -18,6 +23,7 @@ describe('Query', function() {
   var Comment;
   var Product;
   var p1;
+  var db;
 
   before(function() {
     Comment = new Schema({
@@ -40,6 +46,14 @@ describe('Query', function() {
   before(function() {
     var Prod = mongoose.model('Product');
     p1 = new Prod();
+  });
+
+  before(function() {
+    db = start();
+  });
+
+  after(function(done) {
+    db.close(done);
   });
 
   describe('constructor', function() {
@@ -201,8 +215,8 @@ describe('Query', function() {
     it('works', function(done) {
       var query = new Query({}, {}, null, p1.collection);
       query
-      .where('age').lt(66)
-      .where('height').gt(5);
+        .where('age').lt(66)
+        .where('height').gt(5);
       assert.deepEqual(query._conditions, {age: {$lt: 66}, height: {$gt: 5}});
       done();
     });
@@ -735,9 +749,9 @@ describe('Query', function() {
 
       if (typeof global.Map !== 'undefined') {
         query = new Query({}, {}, null, p1.collection);
-        query.sort(new global.Map().set('a', 1).set('b', 2));
+        query.sort(new global.Map().set('a', 1).set('b', 1));
         assert.equal(query.options.sort.get('a'), 1);
-        assert.equal(query.options.sort.get('b'), 2);
+        assert.equal(query.options.sort.get('b'), 1);
       }
 
       query = new Query({}, {}, null, p1.collection);
@@ -855,16 +869,6 @@ describe('Query', function() {
   });
 
   describe('casting', function() {
-    var db;
-
-    before(function() {
-      db = start();
-    });
-
-    after(function(done) {
-      db.close(done);
-    });
-
     it('to an array of mixed', function(done) {
       var query = new Query({}, {}, null, p1.collection);
       var Product = db.model('Product');
@@ -872,6 +876,45 @@ describe('Query', function() {
       query.cast(Product, params);
       assert.deepEqual(params.tags.$in, [4, 8, 15, 16]);
       done();
+    });
+
+    it('doesn\'t wipe out $in (gh-6439)', function() {
+      var embeddedSchema = new Schema({
+        name: String
+      }, { _id: false });
+
+      var catSchema = new Schema({
+        name: String,
+        props: [embeddedSchema]
+      });
+
+      var Cat = db.model('gh6439', catSchema);
+      var kitty = new Cat({
+        name: 'Zildjian',
+        props: [
+          { name: 'invalid' },
+          { name: 'abc' },
+          { name: 'def' }
+        ]
+      });
+
+      return co(function*() {
+        yield kitty.save();
+        var cond = { _id: kitty._id };
+        var update = {
+          $pull: {
+            props: {
+              $in: [
+                { name: 'invalid' },
+                { name: 'def' }
+              ]
+            }
+          }
+        };
+        yield Cat.update(cond, update);
+        let found = yield Cat.findOne(cond);
+        assert.strictEqual(found.props[0].name, 'abc');
+      });
     });
 
     it('find $ne should not cast single value to array for schematype of Array', function(done) {
@@ -1015,19 +1058,17 @@ describe('Query', function() {
 
   describe('distinct', function() {
     it('op', function(done) {
-      var db = start();
       var Product = db.model('Product');
       var prod = new Product({});
       var q = new Query({}, {}, Product, prod.collection).distinct('blah', function() {
         assert.equal(q.op, 'distinct');
-        db.close(done);
+        done();
       });
     });
   });
 
   describe('without a callback', function() {
     it('count, update, remove works', function(done) {
-      var db = start();
       var Product = db.model('Product', 'update_products_' + random());
       new Query(p1.collection, {}, Product).count();
       Product.create({tags: 12345}, function(err) {
@@ -1045,7 +1086,6 @@ describe('Query', function() {
               Product.find({tags: 123456}, function(err, p) {
                 assert.ifError(err);
                 assert.equal(p.length, 0);
-                db.close();
                 done();
               });
             }, time);
@@ -1057,7 +1097,6 @@ describe('Query', function() {
 
   describe('findOne', function() {
     it('sets the op', function(done) {
-      var db = start();
       var Product = db.model('Product');
       var prod = new Product({});
       var q = new Query(prod.collection, {}, Product).distinct();
@@ -1067,18 +1106,16 @@ describe('Query', function() {
         assert.equal(q.op, 'distinct');
         q.findOne();
         assert.equal(q.op, 'findOne');
-        db.close();
         done();
       }, 50);
     });
 
     it('works as a promise', function(done) {
-      var db = start();
       var Product = db.model('Product');
       var promise = Product.findOne();
 
       promise.then(function() {
-        db.close(done);
+        done();
       }, function(err) {
         assert.ifError(err);
       });
@@ -1086,23 +1123,13 @@ describe('Query', function() {
   });
 
   describe('deleteOne/deleteMany', function() {
-    var db;
-
-    before(function() {
-      db = start();
-    });
-
-    after(function(done) {
-      db.close(done);
-    });
-
     it('handles deleteOne', function(done) {
       var M = db.model('deleteOne', new Schema({ name: 'String' }));
       M.create([{ name: 'Eddard Stark' }, { name: 'Robb Stark' }], function(error) {
         assert.ifError(error);
         M.deleteOne({ name: /Stark/ }, function(error) {
           assert.ifError(error);
-          M.count({}, function(error, count) {
+          M.estimatedDocumentCount(function(error, count) {
             assert.ifError(error);
             assert.equal(count, 1);
             done();
@@ -1117,7 +1144,7 @@ describe('Query', function() {
         assert.ifError(error);
         M.deleteMany({ name: /Stark/ }, function(error) {
           assert.ifError(error);
-          M.count({}, function(error, count) {
+          M.countDocuments({}, function(error, count) {
             assert.ifError(error);
             assert.equal(count, 0);
             done();
@@ -1129,12 +1156,10 @@ describe('Query', function() {
 
   describe('remove', function() {
     it('handles cast errors async', function(done) {
-      var db = start();
       var Product = db.model('Product');
 
       assert.doesNotThrow(function() {
         Product.where({numbers: [[[]]]}).remove(function(err) {
-          db.close();
           assert.ok(err);
           done();
         });
@@ -1142,19 +1167,16 @@ describe('Query', function() {
     });
 
     it('supports a single conditions arg', function(done) {
-      var db = start();
       var Product = db.model('Product');
 
       Product.create({strings: ['remove-single-condition']}).then(function() {
-        db.close();
         var q = Product.where().remove({strings: 'remove-single-condition'});
         assert.ok(q instanceof mongoose.Query);
         done();
-      }, done).end();
+      }, done);
     });
 
     it('supports a single callback arg', function(done) {
-      var db = start();
       var Product = db.model('Product');
       var val = 'remove-single-callback';
 
@@ -1162,17 +1184,15 @@ describe('Query', function() {
         Product.where({strings: val}).remove(function(err) {
           assert.ifError(err);
           Product.findOne({strings: val}, function(err, doc) {
-            db.close();
             assert.ifError(err);
             assert.ok(!doc);
             done();
           });
         });
-      }, done).end();
+      }, done);
     });
 
     it('supports conditions and callback args', function(done) {
-      var db = start();
       var Product = db.model('Product');
       var val = 'remove-cond-and-callback';
 
@@ -1180,25 +1200,23 @@ describe('Query', function() {
         Product.where().remove({strings: val}, function(err) {
           assert.ifError(err);
           Product.findOne({strings: val}, function(err, doc) {
-            db.close();
             assert.ifError(err);
             assert.ok(!doc);
             done();
           });
         });
-      }, done).end();
+      }, done);
     });
 
     it('single option, default', function(done) {
-      var db = start();
       var Test = db.model('Test_single', new Schema({ name: String }));
 
       Test.create([{ name: 'Eddard Stark' }, { name: 'Robb Stark' }], function(error) {
         assert.ifError(error);
         Test.remove({ name: /Stark/ }).exec(function(error, res) {
           assert.ifError(error);
-          assert.equal(res.result.n, 2);
-          Test.count({}, function(error, count) {
+          assert.equal(res.n, 2);
+          Test.countDocuments({}, function(error, count) {
             assert.ifError(error);
             assert.equal(count, 0);
             done();
@@ -1208,15 +1226,14 @@ describe('Query', function() {
     });
 
     it('single option, false', function(done) {
-      var db = start();
-      var Test = db.model('Test_single', new Schema({ name: String }));
+      var Test = db.model('Test_single_false', new Schema({ name: String }));
 
       Test.create([{ name: 'Eddard Stark' }, { name: 'Robb Stark' }], function(error) {
         assert.ifError(error);
         Test.remove({ name: /Stark/ }).setOptions({ single: false }).exec(function(error, res) {
           assert.ifError(error);
-          assert.equal(res.result.n, 2);
-          Test.count({}, function(error, count) {
+          assert.equal(res.n, 2);
+          Test.countDocuments({}, function(error, count) {
             assert.ifError(error);
             assert.equal(count, 0);
             done();
@@ -1226,15 +1243,14 @@ describe('Query', function() {
     });
 
     it('single option, true', function(done) {
-      var db = start();
-      var Test = db.model('Test_single', new Schema({ name: String }));
+      var Test = db.model('Test_single_true', new Schema({ name: String }));
 
       Test.create([{ name: 'Eddard Stark' }, { name: 'Robb Stark' }], function(error) {
         assert.ifError(error);
         Test.remove({ name: /Stark/ }).setOptions({ single: true }).exec(function(error, res) {
           assert.ifError(error);
-          assert.equal(res.result.n, 1);
-          Test.count({}, function(error, count) {
+          assert.equal(res.n, 1);
+          Test.countDocuments({}, function(error, count) {
             assert.ifError(error);
             assert.equal(count, 1);
             done();
@@ -1246,7 +1262,6 @@ describe('Query', function() {
 
   describe('querying/updating with model instance containing embedded docs should work (#454)', function() {
     it('works', function(done) {
-      var db = start();
       var Product = db.model('Product');
 
       var proddoc = {comments: [{text: 'hello'}]};
@@ -1270,7 +1285,7 @@ describe('Query', function() {
               // ensure hidden private props were not saved to db
               assert.ok(!doc.comments[0].hasOwnProperty('parentArry'));
               assert.equal(doc.comments[0].text, 'goodbye');
-              db.close(done);
+              done();
             });
           });
         });
@@ -1278,7 +1293,7 @@ describe('Query', function() {
     });
   });
 
-  describe('optionsForExecute', function() {
+  describe('optionsForExec', function() {
     it('should retain key order', function(done) {
       // this is important for query hints
       var hint = {x: 1, y: 1, z: 1};
@@ -1289,6 +1304,38 @@ describe('Query', function() {
 
       var options = q._optionsForExec({schema: {options: {safe: true}}});
       assert.equal(JSON.stringify(options), a);
+      done();
+    });
+
+    it('applies schema-level writeConcern option', function(done) {
+      const q = new Query();
+
+      q.j(true);
+
+      const options = q._optionsForExec({
+        schema: {
+          options: {
+            writeConcern: { w: 'majority' }
+          }
+        }
+      });
+      assert.deepEqual(options, {
+        w: 'majority',
+        j: true
+      });
+      done();
+    });
+
+    it('session() (gh-6663)', function(done) {
+      const q = new Query();
+
+      const fakeSession = 'foo';
+      q.session(fakeSession);
+
+      const options = q._optionsForExec();
+      assert.deepEqual(options, {
+        session: fakeSession
+      });
       done();
     });
   });
@@ -1488,7 +1535,6 @@ describe('Query', function() {
         });
 
         it('and sends it though the driver', function(done) {
-          var db = start();
           var options = {read: 'secondary', safe: {w: 'majority'}};
           var schema = new Schema({name: String}, options);
           var M = db.model(random(), schema);
@@ -1514,7 +1560,7 @@ describe('Query', function() {
               return done(err);
             }
             assert.ok(called);
-            db.close(done);
+            done();
           });
         });
       });
@@ -1547,20 +1593,18 @@ describe('Query', function() {
       assert.equal(q.options.readPreference.mode, 'secondary');
       assert.equal(q.options.readPreference.tags[0].dc, 'eu');
 
-      var db = start();
       var Product = db.model('Product', 'Product_setOptions_test');
       Product.create(
-          {numbers: [3, 4, 5]},
-          {strings: 'hi there'.split(' ')}, function(err, doc1, doc2) {
+        {numbers: [3, 4, 5]},
+        {strings: 'hi there'.split(' ')}, function(err, doc1, doc2) {
+          assert.ifError(err);
+          Product.find().setOptions({limit: 1, sort: {_id: -1}, read: 'n'}).exec(function(err, docs) {
             assert.ifError(err);
-            Product.find().setOptions({limit: 1, sort: {_id: -1}, read: 'n'}).exec(function(err, docs) {
-              db.close();
-              assert.ifError(err);
-              assert.equal(docs.length, 1);
-              assert.equal(docs[0].id, doc2.id);
-              done();
-            });
+            assert.equal(docs.length, 1);
+            assert.equal(docs[0].id, doc2.id);
+            done();
           });
+        });
     });
 
     it('populate as array in options (gh-4446)', function(done) {
@@ -1581,16 +1625,6 @@ describe('Query', function() {
   });
 
   describe('bug fixes', function() {
-    var db;
-
-    before(function() {
-      db = start();
-    });
-
-    after(function(done) {
-      db.close(done);
-    });
-
     describe('collations', function() {
       before(function(done) {
         var _this = this;
@@ -1669,6 +1703,12 @@ describe('Query', function() {
         });
       });
 
+      it('ignores sort when passed to countDocuments', function() {
+        var Product = db.model('Product', 'Product_setOptions_test');
+        return Product.create({}).
+          then(() => Product.find().sort({_id: 1}).countDocuments({}).exec());
+      });
+
       it('ignores count when passed to sort', function(done) {
         var Product = db.model('Product', 'Product_setOptions_test');
         Product.find().count({}).sort({_id: 1}).exec(function(error) {
@@ -1715,7 +1755,7 @@ describe('Query', function() {
       });
 
       assert.deepEqual(Object.keys(q.getUpdate().$push.arr.$sort),
-          ['value', 'date']);
+        ['value', 'date']);
       done();
     });
 
@@ -1775,10 +1815,10 @@ describe('Query', function() {
 
       var answersUpdate = {details: 'blah', stats: {votes: 1, count: '3'}};
       var q = Post.update(
-          {'answers._id': '507f1f77bcf86cd799439011'},
-          {$set: {'answers.$': answersUpdate}});
+        {'answers._id': '507f1f77bcf86cd799439011'},
+        {$set: {'answers.$': answersUpdate}});
 
-      assert.deepEqual(q.getUpdate().$set['answers.$'].stats.toObject(),
+      assert.deepEqual(q.getUpdate().$set['answers.$'].stats,
         { votes: 1, count: 3 });
       done();
     });
@@ -2001,10 +2041,29 @@ describe('Query', function() {
       });
     });
 
-    it('runSettersOnQuery works with _id field (gh-5351)', function(done) {
+    it('does not cast undefined to null in mongoose (gh-6236)', function() {
+      return co(function*() {
+        const TestSchema = new Schema({
+          test: String
+        });
+
+        const Test = db.model('gh6236', TestSchema);
+
+        yield Test.create({});
+
+        const q = Test.find({ test: void 0 });
+        const res = yield q.exec();
+
+        assert.strictEqual(q.getQuery().test, void 0);
+        assert.ok('test' in q.getQuery());
+        assert.equal(res.length, 1);
+      });
+    });
+
+    it('runs query setters with _id field (gh-5351)', function(done) {
       var testSchema = new Schema({
         val: { type: String }
-      }, { runSettersOnQuery: true });
+      });
 
       var Test = db.model('gh5351', testSchema);
       Test.create({ val: 'A string' }).
@@ -2024,6 +2083,30 @@ describe('Query', function() {
         }).
         then(done).
         catch(done);
+    });
+
+    it('runs setters if query field is an array (gh-6277)', function() {
+      let setterCalled = [];
+
+      const schema = new Schema({
+        strings: {
+          type: [String],
+          set: v => {
+            setterCalled.push(v);
+            return v;
+          }
+        }
+      });
+      const Model = db.model('gh6277', schema);
+
+      return co(function*() {
+        yield Model.find({ strings: 'test' });
+        assert.equal(setterCalled.length, 0);
+
+        yield Model.find({ strings: ['test'] });
+        assert.equal(setterCalled.length, 1);
+        assert.deepEqual(setterCalled, [['test']]);
+      });
     });
 
     it('$exists under $not (gh-4933)', function(done) {
@@ -2096,6 +2179,16 @@ describe('Query', function() {
           done();
         });
       });
+    });
+
+    it('overwrites when passing an object when path already set to primitive (gh-6097)', function() {
+      const schema = new mongoose.Schema({ status: String });
+
+      const Model = db.model('gh6097', schema);
+
+      return Model.
+        where({ status: 'approved' }).
+        where({ status: { $ne: 'delayed' } });
     });
 
     it('$exists for arrays and embedded docs (gh-4937)', function(done) {
@@ -2230,8 +2323,8 @@ describe('Query', function() {
       var TestSchema = new Schema();
 
       var count = 0;
-      TestSchema.post('init', function(model, next) {
-        return next(new Error('Failed! ' + (count++)));
+      TestSchema.post('init', function() {
+        throw new Error('Failed! ' + (count++));
       });
 
       var TestModel = db.model('gh5592', TestSchema);
@@ -2265,6 +2358,60 @@ describe('Query', function() {
       });
     });
 
+    describe('throw', function() {
+      let listeners;
+
+      beforeEach(function() {
+        listeners = process.listeners('uncaughtException');
+        process.removeAllListeners('uncaughtException');
+      });
+
+      afterEach(function() {
+        process.on('uncaughtException', listeners[0]);
+      });
+
+      it('throw on sync exceptions in callbacks (gh-6178)', function(done) {
+        const schema = new Schema({});
+        const Test = db.model('gh6178', schema);
+
+        process.once('uncaughtException', err => {
+          assert.equal(err.message, 'woops');
+          done();
+        });
+
+        async.waterfall([
+          function(cb) {
+            Test.create({}, cb);
+          },
+          function(res, cb) {
+            Test.find({}, function() { cb(); });
+          },
+          function() {
+            throw new Error('woops');
+          }
+        ], function() {
+          assert.ok(false);
+        });
+      });
+    });
+
+    it('set overwrite after update() (gh-4740)', function() {
+      const schema = new Schema({ name: String, age: Number });
+      const User = db.model('4740', schema);
+
+      return co(function*() {
+        yield User.create({ name: 'Bar', age: 29 });
+
+        yield User.where({ name: 'Bar' }).
+          update({ name: 'Baz' }).
+          setOptions({ overwrite: true });
+
+        const doc = yield User.findOne();
+        assert.equal(doc.name, 'Baz');
+        assert.ok(!doc.age);
+      });
+    });
+
     it('queries with BSON overflow (gh-5812)', function(done) {
       this.timeout(10000);
 
@@ -2288,6 +2435,146 @@ describe('Query', function() {
           assert.ok(error.message !== 'Expected error');
           done();
         });
+    });
+
+    it('consistently return query when callback specified (gh-6271)', function() {
+      return co(function*() {
+        const schema = new mongoose.Schema({
+          n: Number
+        });
+
+        const Model = db.model('gh6271', schema);
+
+        let doc = yield Model.create({ n: 0 });
+
+        yield Model.findOneAndUpdate({ _id: doc._id }, { $inc: { n: 1 } }, err => {
+          if (err) {
+            throw err;
+          }
+        });
+
+        doc = yield Model.findById(doc);
+        assert.equal(doc.n, 2);
+      });
+    });
+
+    it('explain() (gh-6625)', function() {
+      return co(function*() {
+        const schema = new mongoose.Schema({ n: Number });
+
+        const Model = db.model('gh6625', schema);
+
+        yield Model.create({ n: 42 });
+
+        let res = yield Model.find().explain('queryPlanner');
+        assert.ok(res[0].queryPlanner);
+
+        res = yield Model.find().explain();
+        assert.ok(res[0].queryPlanner);
+
+        res = yield Model.find().explain().explain(false);
+        assert.equal(res[0].n, 42);
+      });
+    });
+
+    it('cast embedded discriminators with dot notation (gh-6027)', function() {
+      return co(function*() {
+        const ownerSchema = new Schema({
+          _id: false
+        }, {
+          discriminatorKey: 'type'
+        });
+
+        const userOwnerSchema = new Schema({
+          id: {type: Schema.Types.ObjectId, required: true}
+        }, { _id: false });
+
+        const tagOwnerSchema = new Schema({
+          id: {type: String, required: true}
+        }, { _id: false });
+
+        const activitySchema = new Schema({
+          owner: {type: ownerSchema, required: true}
+        }, { _id: false });
+
+        activitySchema.path('owner').discriminator('user', userOwnerSchema);
+        activitySchema.path('owner').discriminator('tag', tagOwnerSchema);
+
+        const Activity = db.model('gh6027', activitySchema);
+
+        yield Activity.insertMany([
+          {
+            owner: {
+              id  : '5a042f742a91c1db447534d5',
+              type: 'user'
+            }
+          },
+          {
+            owner: {
+              id  : 'asdf',
+              type: 'tag'
+            }
+          }
+        ]);
+
+        const activity = yield Activity.findOne({
+          'owner.type': 'user',
+          'owner.id': '5a042f742a91c1db447534d5'
+        });
+        assert.ok(activity);
+        assert.equal(activity.owner.type, 'user');
+      });
+    });
+
+    it('cast embedded discriminators with embedded obj (gh-6027)', function() {
+      return co(function*() {
+        const ownerSchema = new Schema({
+          _id: false
+        }, {
+          discriminatorKey: 'type'
+        });
+
+        const userOwnerSchema = new Schema({
+          id: {type: Schema.Types.ObjectId, required: true}
+        }, { _id: false });
+
+        const tagOwnerSchema = new Schema({
+          id: {type: String, required: true}
+        }, { _id: false });
+
+        const activitySchema = new Schema({
+          owner: {type: ownerSchema, required: true}
+        }, { _id: false });
+
+        activitySchema.path('owner').discriminator('user', userOwnerSchema);
+        activitySchema.path('owner').discriminator('tag', tagOwnerSchema);
+
+        const Activity = db.model('gh6027_0', activitySchema);
+
+        yield Activity.insertMany([
+          {
+            owner: {
+              id  : '5a042f742a91c1db447534d5',
+              type: 'user'
+            }
+          },
+          {
+            owner: {
+              id  : 'asdf',
+              type: 'tag'
+            }
+          }
+        ]);
+
+        const activity = yield Activity.findOne({
+          owner: {
+            type: 'user',
+            id: '5a042f742a91c1db447534d5'
+          }
+        });
+        assert.ok(activity);
+        assert.equal(activity.owner.type, 'user');
+      });
     });
 
     it('handles geoWithin with mongoose docs (gh-4392)', function(done) {
@@ -2363,12 +2650,9 @@ describe('Query', function() {
   });
 
   describe('handles falsy and object projections with defaults (gh-3256)', function() {
-    var db;
     var MyModel;
 
     before(function(done) {
-      db = start();
-
       var PersonSchema = new Schema({
         name: String,
         lastName: String,
@@ -2398,22 +2682,17 @@ describe('Query', function() {
       });
     });
 
-    after(function(done) {
-      db.close(done);
-    });
-
     it('falsy projection', function(done) {
       MyModel.findOne({name: 'John'}, {lastName: false}).
-      exec(function(error, person) {
-        assert.ifError(error);
-        assert.equal(person.salary, 25000);
-        done();
-      });
+        exec(function(error, person) {
+          assert.ifError(error);
+          assert.equal(person.salary, 25000);
+          done();
+        });
     });
 
     it('slice projection', function(done) {
-      MyModel.findOne({name: 'John'}, {dependents: {$slice: 1}}).
-      exec(function(error, person) {
+      MyModel.findOne({name: 'John'}, {dependents: {$slice: 1}}).exec(function(error, person) {
         assert.ifError(error);
         assert.equal(person.salary, 25000);
         done();
@@ -2422,10 +2701,43 @@ describe('Query', function() {
 
     it('empty projection', function(done) {
       MyModel.findOne({name: 'John'}, {}).
-      exec(function(error, person) {
-        assert.ifError(error);
-        assert.equal(person.salary, 25000);
-        done();
+        exec(function(error, person) {
+          assert.ifError(error);
+          assert.equal(person.salary, 25000);
+          done();
+        });
+    });
+  });
+
+  describe('count', function() {
+    it('calls utils.toObject on conditions (gh-6323)', function() {
+      return co(function* () {
+        var priceSchema = new Schema({
+          key: String,
+          price: Number
+        });
+
+        var Model = db.model('gh6323', priceSchema);
+
+        var tests = [];
+
+        for (let i = 0; i < 10; i++) {
+          let p = i * 25;
+          tests.push(new Model({ key: 'value', price: p }));
+        }
+
+        let query = { key: 'value' };
+
+        let priceQuery = Object.create(null);
+
+        priceQuery.$gte = 0;
+        priceQuery.$lte = 200;
+
+        Object.assign(query, { price: priceQuery });
+
+        yield Model.create(tests);
+        var count = yield Model.countDocuments(query);
+        assert.strictEqual(count, 9);
       });
     });
   });

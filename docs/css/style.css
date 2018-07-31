@@ -41,6 +41,7 @@ h1 {
   font-family: 'Helvetica Nueue', Helvetica, Arial, FreeSans, sans-serif;
   text-rendering: geometricPrecision;
 }
+
 pre {
   background: #eee;
   padding: 5px;
@@ -129,7 +130,7 @@ h2 a {
   text-shadow: 1px 1px 7px #222;
 }
 #follow {
-  margin-bottom: 66px;
+  margin-bottom: 36px;
   margin-left: 109px;
 }
 #follow ul {

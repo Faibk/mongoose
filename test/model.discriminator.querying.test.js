@@ -2,13 +2,13 @@
  * Test dependencies.
  */
 
-var start = require('./common'),
-    mongoose = start.mongoose,
-    Schema = mongoose.Schema,
-    assert = require('power-assert'),
-    random = require('../lib/utils').random,
-    util = require('util'),
-    async = require('async');
+var start = require('./common');
+var mongoose = start.mongoose;
+var Schema = mongoose.Schema;
+var assert = require('assert');
+var random = require('../lib/utils').random;
+var util = require('util');
+var async = require('async');
 
 
 /**
@@ -74,9 +74,9 @@ describe('model', function() {
           personName: Number
         });
         BaseCustomEvent = db.model('base-custom-event',
-                                   BaseCustomEventSchema);
+          BaseCustomEventSchema);
         DiscCustomEvent = BaseCustomEvent.discriminator('disc-custom-event',
-                                                        DiscCustomEventSchema);
+          DiscCustomEventSchema);
         var ContainerSchema = new Schema({
           title: String,
           events: [{type: Schema.Types.ObjectId, ref: 'base-custom-event'}]
@@ -140,12 +140,12 @@ describe('model', function() {
                 assert.equal(docs[0].name, 'Base event');
 
                 assert.ok(docs[1] instanceof ConversionEvent);
-                assert.equal(docs[1].schema, ConversionEventSchema);
+                assert.deepEqual(docs[1].schema.tree, ConversionEventSchema.tree);
                 assert.equal(docs[1].name, 'Conversion event');
                 assert.equal(docs[1].revenue, 1.337);
 
                 assert.ok(docs[2] instanceof ImpressionEvent);
-                assert.equal(docs[2].schema, ImpressionEventSchema);
+                assert.deepEqual(docs[2].schema.tree, ImpressionEventSchema.tree);
                 assert.equal(docs[2].name, 'Impression event');
                 done();
               });
@@ -171,12 +171,12 @@ describe('model', function() {
                 assert.equal(docs[0].name, 'Base event');
 
                 assert.ok(docs[1] instanceof ConversionEvent);
-                assert.equal(docs[1].schema, ConversionEventSchema);
+                assert.deepEqual(docs[1].schema.tree, ConversionEventSchema.tree);
                 assert.equal(docs[1].name, 'Conversion event');
                 assert.equal(docs[1].revenue, undefined);
 
                 assert.ok(docs[2] instanceof ImpressionEvent);
-                assert.equal(docs[2].schema, ImpressionEventSchema);
+                assert.deepEqual(docs[2].schema.tree, ImpressionEventSchema.tree);
                 assert.equal(docs[2].name, 'Impression event');
                 done();
               });
@@ -335,49 +335,6 @@ describe('model', function() {
       it('discriminator model only finds documents of its type when fields selection set as empty object', function(done) {
         checkDiscriminatorModelsFindDocumentsOfItsType({}, done);
       });
-
-      it('hydrates streams', function(done) {
-        var baseEvent = new BaseEvent({name: 'Base event'});
-        var impressionEvent = new ImpressionEvent({name: 'Impression event'});
-        var conversionEvent = new ConversionEvent({name: 'Conversion event', revenue: 1.337});
-
-        baseEvent.save(function(err) {
-          assert.ifError(err);
-          impressionEvent.save(function(err) {
-            assert.ifError(err);
-            conversionEvent.save(function(err) {
-              assert.ifError(err);
-              var stream = BaseEvent.find({}).sort('name').stream();
-
-              stream.on('data', function(doc) {
-                switch (doc.name) {
-                  case 'Base event':
-                    assert.ok(doc instanceof BaseEvent);
-                    break;
-                  case 'Impression event':
-                    assert.ok(doc instanceof BaseEvent);
-                    assert.ok(doc instanceof ImpressionEvent);
-                    break;
-                  case 'Conversion event':
-                    assert.ok(doc instanceof BaseEvent);
-                    assert.ok(doc instanceof ConversionEvent);
-                    break;
-                  default:
-
-                }
-              });
-
-              stream.on('error', function(err) {
-                assert.ifError(err);
-              });
-
-              stream.on('close', function() {
-                done();
-              });
-            });
-          });
-        });
-      });
     });
 
     describe('findOne', function() {
@@ -446,14 +403,14 @@ describe('model', function() {
                 BaseEvent.findOne({_id: impressionEvent._id}, function(err, event) {
                   assert.ifError(err);
                   assert.ok(event instanceof ImpressionEvent);
-                  assert.equal(event.schema, ImpressionEventSchema);
+                  assert.deepEqual(event.schema.tree, ImpressionEventSchema.tree);
                   assert.equal(event.name, 'Impression event');
 
                   // finds & hydrates ConversionEvent
                   BaseEvent.findOne({_id: conversionEvent._id}, function(err, event) {
                     assert.ifError(err);
                     assert.ok(event instanceof ConversionEvent);
-                    assert.equal(event.schema, ConversionEventSchema);
+                    assert.deepEqual(event.schema.tree, ConversionEventSchema.tree);
                     assert.equal(event.name, 'Conversion event');
                     done();
                   });
@@ -485,14 +442,14 @@ describe('model', function() {
                 BaseEvent.findOne({_id: impressionEvent._id}, fields, function(err, event) {
                   assert.ifError(err);
                   assert.ok(event instanceof ImpressionEvent);
-                  assert.equal(event.schema, ImpressionEventSchema);
+                  assert.deepEqual(event.schema.tree, ImpressionEventSchema.tree);
                   assert.equal(event.name, 'Impression event');
 
                   // finds & hydrates ConversionEvent
                   BaseEvent.findOne({_id: conversionEvent._id}, fields, function(err, event) {
                     assert.ifError(err);
                     assert.ok(event instanceof ConversionEvent);
-                    assert.equal(event.schema, ConversionEventSchema);
+                    assert.deepEqual(event.schema.tree, ConversionEventSchema.tree);
                     assert.equal(event.name, 'Conversion event');
                     if (checkUndefinedRevenue === true) {
                       assert.equal(event.revenue, undefined);
@@ -1008,6 +965,29 @@ describe('model', function() {
               done();
             }).
             catch(done);
+        });
+
+        it('doesnt exclude field if slice (gh-4991)', function(done) {
+          var baseSchema = new mongoose.Schema({
+            propA: { type: String, default: 'default value' },
+            array: [{type: String}]
+          });
+
+          var Base = db.model('gh4991_A', baseSchema);
+          var discriminatorSchema = new mongoose.Schema({
+            propB: { type: String}
+          });
+          var Discriminator = Base.discriminator('gh4991_A1', discriminatorSchema);
+
+          var obj = { propA: 'Hi', propB: 'test', array: ['a', 'b'] };
+          Discriminator.create(obj, function(error) {
+            assert.ifError(error);
+            Base.find().slice('array', 1).exec(function(error, docs) {
+              assert.equal(docs.length, 1);
+              assert.equal(docs[0].propA, 'Hi');
+              done();
+            });
+          });
         });
 
         it('merges the first pipeline stages if applicable', function(done) {

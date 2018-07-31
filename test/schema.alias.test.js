@@ -1,17 +1,27 @@
+'use strict';
 
 /**
  * Module dependencies.
  */
 
-var start = require('./common'),
-    mongoose = start.mongoose,
-    assert = require('power-assert'),
-    Schema = mongoose.Schema;
+const assert = require('assert');
+const start = require('./common');
+
+const mongoose = start.mongoose;
+const Schema = mongoose.Schema;
 
 describe('schema alias option', function() {
-  it('works with all basic schema types', function() {
-    var db = start();
+  var db;
 
+  before(function() {
+    db = start();
+  });
+
+  after(function(done) {
+    db.close(done);
+  });
+
+  it('works with all basic schema types', function(done) {
     var schema = new Schema({
       string:   { type: String, alias: 'StringAlias' },
       number:   { type: Number, alias: 'NumberAlias' },
@@ -45,25 +55,21 @@ describe('schema alias option', function() {
       assert.equal(s.mixed, s.MixedAlias);
       assert.equal(s.objectId, s.ObjectIdAlias);
       assert.equal(s.array, s.ArrayAlias);
+      done();
     });
   });
 
-  it('works with nested schema types', function() {
-    var db = start();
-
+  it('works with nested schema types', function(done) {
     var schema = new Schema({
       nested: {
-        type: {
-          string:   { type: String, alias: 'StringAlias' },
-          number:   { type: Number, alias: 'NumberAlias' },
-          date:     { type: Date, alias: 'DateAlias' },
-          buffer:   { type: Buffer, alias: 'BufferAlias' },
-          boolean:  { type: Boolean, alias: 'BooleanAlias' },
-          mixed:    { type: Schema.Types.Mixed, alias: 'MixedAlias' },
-          objectId: { type: Schema.Types.ObjectId, alias: 'ObjectIdAlias'},
-          array:    { type: [], alias: 'ArrayAlias' }
-        },
-        alias: 'NestedAlias'
+        string:   { type: String, alias: 'StringAlias' },
+        number:   { type: Number, alias: 'NumberAlias' },
+        date:     { type: Date, alias: 'DateAlias' },
+        buffer:   { type: Buffer, alias: 'BufferAlias' },
+        boolean:  { type: Boolean, alias: 'BooleanAlias' },
+        mixed:    { type: Schema.Types.Mixed, alias: 'MixedAlias' },
+        objectId: { type: Schema.Types.ObjectId, alias: 'ObjectIdAlias'},
+        array:    { type: [], alias: 'ArrayAlias' }
       }
     });
 
@@ -83,7 +89,6 @@ describe('schema alias option', function() {
       assert.ifError(err);
 
       // Comparing with aliases
-      assert.equal(s.nested, s.NestedAlias);
       assert.equal(s.nested.string, s.StringAlias);
       assert.equal(s.nested.number, s.NumberAlias);
       assert.equal(s.nested.date, s.DateAlias);
@@ -92,6 +97,7 @@ describe('schema alias option', function() {
       assert.equal(s.nested.mixed, s.MixedAlias);
       assert.equal(s.nested.objectId, s.ObjectIdAlias);
       assert.equal(s.nested.array, s.ArrayAlias);
+      done();
     });
   });
 
@@ -101,5 +107,50 @@ describe('schema alias option', function() {
         foo: { type: String, alias: 456 }
       });
     });
+  });
+
+  it('with add() (gh-6593)', function() {
+    const s = new Schema({ name: { type: String, alias: 'test1' } });
+
+    assert.deepEqual(Object.keys(s.aliases), ['test1']);
+
+    s.add({ name2: { type: String, alias: 'test2' } });
+
+    assert.deepEqual(Object.keys(s.aliases), ['test1', 'test2']);
+  });
+
+  it('nested aliases (gh-6671)', function(done) {
+    const childSchema = new Schema({
+      n: {
+        type: String,
+        alias: 'name'
+      }
+    }, { _id: false });
+
+    const parentSchema = new Schema({
+      // If in a child schema, alias doesn't need to include the full nested path
+      c: childSchema,
+      name: {
+        f: {
+          type: String,
+          // Alias needs to include the full nested path if declared inline
+          alias: 'name.first'
+        }
+      }
+    });
+    // acquit:ignore:start
+    const Parent = mongoose.model('gh6671', parentSchema);
+    const doc = new Parent({
+      c: {
+        name: 'foo'
+      },
+      name: {
+        first: 'bar'
+      }
+    });
+    assert.deepEqual(doc.toObject().c, { n: 'foo' });
+    assert.deepEqual(doc.toObject().name, { f: 'bar' });
+    done();
+    // acquit:ignore:end
   });
 });
